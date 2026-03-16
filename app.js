@@ -576,12 +576,48 @@ window.addEventListener('keyup', (e) => {
     keys[e.key] = false;
 });
 
+let d9Velocity = 0;
+
 function updateKinematics(dt) {
     if (!d9Root) return;
 
-    const moveSpeed = 5.0 * dt;
+    const baseMoveSpeed = 5.0;
     const turnSpeed = 1.5 * dt;
     const bladeSpeed = 1.0 * dt;
+
+    // Count how much dirt is under the tracks to simulate drag
+    let dirtDrag = 0;
+    let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
+    let chassisAABB = new Vector3(2.8, 1.5, 4.5); // approximate footprint including tracks
+    let dirtSize = new Vector3(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
+
+    for (let dirt of dirtBoxes) {
+        if (checkAABBCollision(dirt.position, dirtSize, chassisWorldPos, chassisAABB)) {
+            dirtDrag += 1;
+        }
+    }
+
+    // Reduce target speed based on dirt drag (each block reduces speed slightly, up to 80% reduction)
+    let dragFactor = Math.min(0.8, dirtDrag * 0.05);
+    let currentMaxSpeed = baseMoveSpeed * (1.0 - dragFactor);
+
+    let targetVelocity = 0;
+    if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
+    if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
+
+    // Smoothly interpolate velocity for acceleration effect
+    let accel = 10.0 * dt;
+    if (d9Velocity < targetVelocity) {
+        d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
+    } else if (d9Velocity > targetVelocity) {
+        d9Velocity = Math.max(d9Velocity - accel, targetVelocity);
+    }
+
+    // Chassis Leaning (pitching forward/backward on acceleration)
+    // Positive velocity diff means accelerating forward (lean backward slightly)
+    let accelLean = (targetVelocity - d9Velocity) * 0.05;
+    // Add spring effect to return to level
+    d9Root.rotation.x = d9Root.rotation.x * 0.9 + accelLean;
 
     // Left/Right: Rotation Y
     if (keys['ArrowLeft']) {
@@ -594,11 +630,8 @@ function updateKinematics(dt) {
     // Up/Down: Translate forward/backward along local Z
     let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y));
 
-    if (keys['ArrowUp']) {
-        d9Root.position.add(new Vector3().copy(forward).multiplyScalar(moveSpeed));
-    }
-    if (keys['ArrowDown']) {
-        d9Root.position.sub(new Vector3().copy(forward).multiplyScalar(moveSpeed));
+    if (Math.abs(d9Velocity) > 0.01) {
+        d9Root.position.add(new Vector3().copy(forward).multiplyScalar(d9Velocity * dt));
     }
 
     // < / > : Raise/Lower Blade (Rotation X on BladeArms)
@@ -611,12 +644,22 @@ function updateKinematics(dt) {
 
     // Clamp blade rotation to realistic limits
     d9BladeArms.rotation.x = Math.max(-0.4, Math.min(0.2, d9BladeArms.rotation.x));
+
+    // [ / ] : Camera Pitch (0 to 90 degrees)
+    const pitchSpeed = 1.0 * dt;
+    if (keys['[']) {
+        cameraPitch -= pitchSpeed;
+    }
+    if (keys[']']) {
+        cameraPitch += pitchSpeed;
+    }
+    cameraPitch = Math.max(0, Math.min(Math.PI / 2 - 0.01, cameraPitch)); // Clamp 0 to ~90 deg
 }
 
 
 // Dirt Pile & Physics Logic
 let dirtBoxes = [];
-const DIRT_COUNT = 150;
+const DIRT_COUNT = 400;
 const DIRT_SIZE = 0.4;
 const GRAVITY = 9.8;
 
@@ -666,14 +709,14 @@ function updatePhysics(dt) {
 
     // Approximate Blade AABB size in world space based on local scales.
     // The main blade center is 3.5 wide, 1.5 high, 0.2 deep.
-    // This is an approximation as AABB should expand on rotation.
-    // But for simplicity of this requirement:
-    let bladeSize = new Vector3(3.5, 1.5, 0.2);
-    // Expand a bit to catch dirt easily
-    bladeSize.add(new Vector3(0.5, 0.5, 0.5));
+    // Expand depth to act like a scoop
+    let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
     // Calculate D9 Forward Vector in World Space
     let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y)).normalize();
+
+    // The floor of the 'scoop' is relative to the blade's bottom edge Y
+    let scoopFloorY = bladeWorldPos.y - (bladeSize.y / 2) + (DIRT_SIZE / 2);
 
     // Check collisions and push
     for (let dirt of dirtBoxes) {
@@ -681,23 +724,29 @@ function updatePhysics(dt) {
         let dirtSize = new Vector3(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
 
         // Simple AABB against the blade center world position
-        // This acts like a bounding box around the blade's world center
         let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
 
         if (hit) {
             // Wake up
             dirt.isSleeping = false;
 
-            // Push displacement: Match D9 forward vector + upward bias
-            let pushForce = 5.0; // How hard we push
-            let upwardBias = 2.0;
+            // If the blade is lifted off the ground and dirt is inside the scoop,
+            // hold it at the scoop floor (picking it up).
+            if (scoopFloorY > DIRT_SIZE / 2 && dirt.position.y >= scoopFloorY - 0.2) {
+                dirt.position.y = scoopFloorY;
+                dirt.velocity.y = 0;
+            } else {
+                // Otherwise apply upward bias if it's being pushed from below
+                if (dirt.position.y < bladeWorldPos.y + 0.5) {
+                    dirt.velocity.y = 2.0;
+                }
+            }
 
+            // Push displacement forward
+            let pushForce = 5.0;
             dirt.velocity.x = forward.x * pushForce;
             dirt.velocity.z = forward.z * pushForce;
-            // Add upward bias only if it's low down relative to blade
-            if (dirt.position.y < bladeWorldPos.y + 0.5) {
-               dirt.velocity.y = upwardBias;
-            }
+
         } else {
             // Apply Gravity and damping
             if (!dirt.isSleeping) {
@@ -735,6 +784,7 @@ function updatePhysics(dt) {
 let lastTime = 0;
 let viewMatrix = new Matrix4();
 let projectionMatrix = new Matrix4();
+let cameraPitch = 0.2; // Initial pitch (in radians)
 
 function render(now) {
     now *= 0.001; // convert to seconds
@@ -756,10 +806,11 @@ function render(now) {
     projectionMatrix.makePerspective(fieldOfView, aspect, zNear, zFar);
 
     // Make camera follow D9 loosely
+    let distance = 15;
     let cameraOffset = new Vector3(
-        -Math.sin(d9Root.rotation.y) * 12,
-        6,
-        -Math.cos(d9Root.rotation.y) * 12
+        -Math.sin(d9Root.rotation.y) * Math.cos(cameraPitch) * distance,
+        Math.sin(cameraPitch) * distance + 2, // Base height offset
+        -Math.cos(d9Root.rotation.y) * Math.cos(cameraPitch) * distance
     );
     let cameraPos = new Vector3().copy(d9Root.position).add(cameraOffset);
     let targetPos = new Vector3().copy(d9Root.position);
