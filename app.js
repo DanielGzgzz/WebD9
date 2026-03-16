@@ -577,6 +577,7 @@ window.addEventListener('keyup', (e) => {
 });
 
 let d9Velocity = 0;
+let d9VelocityY = 0; // vertical velocity for jumping
 
 function updateKinematics(dt) {
     if (!d9Root) return;
@@ -613,12 +614,6 @@ function updateKinematics(dt) {
         d9Velocity = Math.max(d9Velocity - accel, targetVelocity);
     }
 
-    // Chassis Leaning (pitching forward/backward on acceleration)
-    // Positive velocity diff means accelerating forward (lean backward slightly)
-    let accelLean = (targetVelocity - d9Velocity) * 0.05;
-    // Add spring effect to return to level
-    d9Root.rotation.x = d9Root.rotation.x * 0.9 + accelLean;
-
     // Left/Right: Rotation Y
     if (keys['ArrowLeft']) {
         d9Root.rotation.y += turnSpeed;
@@ -632,6 +627,58 @@ function updateKinematics(dt) {
 
     if (Math.abs(d9Velocity) > 0.01) {
         d9Root.position.add(new Vector3().copy(forward).multiplyScalar(d9Velocity * dt));
+    }
+
+    // Jump / Terrain matching physics
+    let wheelBase = 4.5;
+    let frontTrackZ = d9Root.position.z + forward.z * (wheelBase / 2);
+    let frontTrackX = d9Root.position.x + forward.x * (wheelBase / 2);
+    let backTrackZ = d9Root.position.z - forward.z * (wheelBase / 2);
+    let backTrackX = d9Root.position.x - forward.x * (wheelBase / 2);
+
+    let heightFront = getTerrainHeight(frontTrackX, frontTrackZ);
+    let heightBack = getTerrainHeight(backTrackX, backTrackZ);
+
+    // Desired base height (average of front and back tracks)
+    let targetY = (heightFront + heightBack) / 2 + 1; // +1 for chassis center offset from ground
+    // Negate the pitch difference because our rotation X is inverted visually
+    let targetPitch = -Math.atan2(heightFront - heightBack, wheelBase);
+
+    // Apply Gravity to D9 Vertical velocity
+    d9VelocityY -= 15.0 * dt;
+    d9Root.position.y += d9VelocityY * dt;
+
+    if (d9Root.position.y <= targetY) {
+        // We hit the ground
+        d9Root.position.y = targetY;
+        d9VelocityY = 0; // stop falling
+
+        // Match pitch to terrain only if grounded
+        // Positive velocity diff means accelerating forward (lean backward slightly)
+        let accelLean = (targetVelocity - d9Velocity) * 0.01;
+        // Interpolate pitch to target
+        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 10 * dt;
+        d9Root.rotation.x += accelLean; // add weak accel lean
+    } else {
+        // Airborne! Maintain current pitch (or slowly level out)
+        d9Root.rotation.x *= 0.99;
+    }
+
+    // Ground penetration check for blade (See-Saw effect)
+    if (d9Blade) {
+        d9Root.updateMatrix(null); // Ensure matrices are ready
+        let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
+        let bladeTerrainY = getTerrainHeight(bladeWorldPos.x, bladeWorldPos.z);
+        // If the blade bottom (approx -0.5 local Y offset) hits the ground, lift the chassis
+        let bladeBottomY = bladeWorldPos.y - 0.5;
+        if (bladeBottomY < bladeTerrainY) {
+            let penetration = bladeTerrainY - bladeBottomY;
+            d9Root.position.y += penetration;
+            // Also pitch back a bit to simulate see-saw
+            d9Root.rotation.x -= penetration * 0.1;
+            // Stop falling if we hit via blade
+            if (d9VelocityY < 0) d9VelocityY = 0;
+        }
     }
 
     // < / > : Raise/Lower Blade (Rotation X on BladeArms)
@@ -663,22 +710,46 @@ const DIRT_COUNT = 400;
 const DIRT_SIZE = 0.4;
 const GRAVITY = 9.8;
 
+// Grid-based heightmap for stacking dirt
+let dirtHeightGrid = new Map();
+
+function getGridKey(x, z) {
+    let gridX = Math.floor(x / DIRT_SIZE);
+    let gridZ = Math.floor(z / DIRT_SIZE);
+    return `${gridX},${gridZ}`;
+}
+
 function initDirt() {
-    for (let i = 0; i < DIRT_COUNT; i++) {
-        let x = (Math.random() - 0.5) * 6; // Cluster spread X
-        let z = 8 + (Math.random() - 0.5) * 6; // Cluster spread Z (in front of start pos)
-        let y = DIRT_SIZE / 2 + Math.random() * 2; // Initial fall height
+    let layers = 7;
+    let index = 0;
 
-        let dirt = new Node(`Dirt${i}`);
-        dirt.position.set(x, y, z);
-        dirt.scale.set(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
-        // Random brown color
-        dirt.color = [0.4 + Math.random()*0.1, 0.2 + Math.random()*0.1, 0.1, 1.0];
-        // Physics state
-        dirt.velocity = new Vector3(0, 0, 0);
-        dirt.isSleeping = false;
+    // Pyramid generation
+    for (let l = 0; l < layers; l++) {
+        let size = layers - l;
+        let startX = -(size / 2) * DIRT_SIZE;
+        let startZ = 12 - (size / 2) * DIRT_SIZE;
 
-        dirtBoxes.push(dirt);
+        for (let ix = 0; ix < size; ix++) {
+            for (let iz = 0; iz < size; iz++) {
+                if (index >= DIRT_COUNT) break;
+
+                let x = startX + ix * DIRT_SIZE;
+                let z = startZ + iz * DIRT_SIZE;
+
+                let terrainY = getTerrainHeight(x, z);
+                let y = terrainY + (l * DIRT_SIZE) + (DIRT_SIZE / 2);
+
+                let dirt = new Node(`Dirt${index}`);
+                dirt.position.set(x, y, z);
+                dirt.scale.set(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
+                dirt.color = [0.4 + Math.random()*0.1, 0.2 + Math.random()*0.1, 0.1, 1.0];
+                dirt.velocity = new Vector3(0, 0, 0);
+                dirt.isSleeping = false;
+
+                dirtBoxes.push(dirt);
+                index++;
+            }
+        }
     }
 }
 
@@ -717,6 +788,11 @@ function updatePhysics(dt) {
 
     // The floor of the 'scoop' is relative to the blade's bottom edge Y
     let scoopFloorY = bladeWorldPos.y - (bladeSize.y / 2) + (DIRT_SIZE / 2);
+
+    // Clear grid for this frame
+    dirtHeightGrid.clear();
+    // Sort dirt array by Y ascending so we can build the heightmap from the ground up
+    dirtBoxes.sort((a, b) => a.position.y - b.position.y);
 
     // Check collisions and push
     for (let dirt of dirtBoxes) {
@@ -762,18 +838,33 @@ function updatePhysics(dt) {
             // Damping (Friction)
             dirt.velocity.x *= 0.9;
             dirt.velocity.z *= 0.9;
+        }
 
-            // Ground collision
-            if (dirt.position.y < DIRT_SIZE / 2) {
-                dirt.position.y = DIRT_SIZE / 2;
-                dirt.velocity.y = 0;
+        // Terrain and Stacking Collision
+        let terrainY = getTerrainHeight(dirt.position.x, dirt.position.z);
+        let baseHeight = terrainY + DIRT_SIZE / 2;
 
-                // If moving very slow, sleep
-                if (Math.abs(dirt.velocity.x) < 0.1 && Math.abs(dirt.velocity.z) < 0.1) {
-                    dirt.isSleeping = true;
-                    dirt.velocity.set(0,0,0);
-                }
+        // Check heightmap to see if we land on another block
+        let gridKey = getGridKey(dirt.position.x, dirt.position.z);
+        let stackHeight = dirtHeightGrid.get(gridKey) || baseHeight;
+
+        if (dirt.position.y <= stackHeight) {
+            // Landed
+            dirt.position.y = stackHeight;
+            dirt.velocity.y = 0;
+
+            // Update grid for the next block to land on this one
+            dirtHeightGrid.set(gridKey, stackHeight + DIRT_SIZE);
+
+            // Friction stops it completely if it lands
+            if (Math.abs(dirt.velocity.x) < 0.5 && Math.abs(dirt.velocity.z) < 0.5) {
+                dirt.isSleeping = true;
+                dirt.velocity.set(0,0,0);
             }
+        } else {
+            // In air, we just update the stack height so blocks falling together don't pass through
+            // but we don't snap to it yet. This is a simple approximation.
+            dirtHeightGrid.set(gridKey, dirt.position.y + DIRT_SIZE);
         }
 
         dirt.updateMatrix(null);
@@ -806,7 +897,7 @@ function render(now) {
     projectionMatrix.makePerspective(fieldOfView, aspect, zNear, zFar);
 
     // Make camera follow D9 loosely
-    let distance = 15;
+    let distance = 35;
     let cameraOffset = new Vector3(
         -Math.sin(d9Root.rotation.y) * Math.cos(cameraPitch) * distance,
         Math.sin(cameraPitch) * distance + 2, // Base height offset
@@ -827,6 +918,11 @@ function render(now) {
     // Draw Dirt
     for (let dirt of dirtBoxes) {
         dirt.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
+    for (let r of sceneRamps) {
+        r.updateMatrix(null);
+        r.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
     // Ground plane (just a big flat box)
@@ -861,5 +957,53 @@ window.onload = () => {
     initWebGL();
     buildD9();
     initDirt();
+    sceneRamps = buildRamp();
     requestAnimationFrame(render);
 };
+
+// Terrain Logic
+// Build a ramp in front of the D9 starting position
+const RAMP_START = 15;
+const RAMP_END = 25;
+const RAMP_HEIGHT = 4.0;
+const RAMP_WIDTH = 8.0;
+
+function getTerrainHeight(x, z) {
+    if (Math.abs(x) <= RAMP_WIDTH / 2) {
+        if (z > RAMP_START && z < RAMP_END) {
+            // Slope up from START to END
+            let progress = (z - RAMP_START) / (RAMP_END - RAMP_START);
+            return progress * RAMP_HEIGHT;
+        } else if (z >= RAMP_END && z < RAMP_END + 5) {
+            // Flat top before drop
+            return RAMP_HEIGHT;
+        }
+    }
+    return 0; // Base ground level
+}
+
+let rampNode;
+function buildRamp() {
+    rampNode = new Node("Ramp");
+    rampNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, RAMP_END - RAMP_START);
+    // Since it's a box but the terrain function makes it a slope for collision,
+    // we'll just angle the node visually to match the slope.
+    let length = RAMP_END - RAMP_START;
+    let angle = Math.atan2(RAMP_HEIGHT, length);
+    rampNode.rotation.x = -angle; // Lean up
+
+    // Position it halfway up the slope
+    rampNode.position.set(0, RAMP_HEIGHT / 2, (RAMP_START + RAMP_END) / 2);
+    rampNode.color = [0.25, 0.45, 0.15, 1.0];
+
+    // Flat top part
+    let rampTopNode = new Node("RampTop");
+    rampTopNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, 5);
+    rampTopNode.position.set(0, RAMP_HEIGHT, RAMP_END + 2.5); // Fixed top height
+    rampTopNode.color = [0.2, 0.4, 0.1, 1.0];
+
+    // We add them directly to the scene drawing logic later
+    return [rampNode, rampTopNode];
+}
+
+let sceneRamps = [];
