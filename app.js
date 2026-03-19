@@ -43,6 +43,15 @@ class Vector3 {
         return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
     }
 
+    lengthSq() {
+        return this.x * this.x + this.y * this.y + this.z * this.z;
+    }
+
+    distanceToSquared(v) {
+        let dx = this.x - v.x, dy = this.y - v.y, dz = this.z - v.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
     normalize() {
         let len = this.length();
         if (len > 0) {
@@ -919,84 +928,83 @@ function updateKinematics(dt) {
 
 // Dirt Pile & Physics Logic
 let dirtBoxes = [];
-const DIRT_COUNT = 800;
-const DIRT_SIZE = 0.4;
-const GRAVITY = 9.8;
+const DIRT_COUNT = 300; // Fewer blocks but physically simulated
+const DIRT_SIZE = 0.6;
+const GRAVITY = 15.0; // Snappier gravity
 let limbs = [];
 
-// Grid-based heightmap for stacking dirt
-let dirtHeightGrid = new Map();
+// A uniform spatial grid to quickly find nearby debris
+let debrisGrid = new Map();
+const GRID_CELL_SIZE = 2.0;
 
 function getGridKey(x, z) {
-    let gridX = Math.floor(x / DIRT_SIZE);
-    let gridZ = Math.floor(z / DIRT_SIZE);
+    let gridX = Math.floor(x / GRID_CELL_SIZE);
+    let gridZ = Math.floor(z / GRID_CELL_SIZE);
     return `${gridX},${gridZ}`;
 }
 
 function initDirt() {
-    let layers = 10;
     let index = 0;
 
-    // Pyramid generation
-    for (let l = 0; l < layers; l++) {
-        let size = layers - l;
-        let startX = -(size / 2) * DIRT_SIZE;
-        let startZ = 12 - (size / 2) * DIRT_SIZE;
+    // Create a messy rubble field blocking the path ahead
+    // Center of blockage around z=20, spread out across x
+    let blockCenterX = 0;
+    let blockCenterZ = 20;
+    let spreadX = 8; // Width of the road block
+    let spreadZ = 5; // Depth of the pile
 
-        for (let ix = 0; ix < size; ix++) {
-            for (let iz = 0; iz < size; iz++) {
-                if (index >= DIRT_COUNT) break;
+    for (let i = 0; i < DIRT_COUNT; i++) {
+        // Randomly scatter around the blockage area
+        let rx = (Math.random() - 0.5) * spreadX * 2;
+        let rz = (Math.random() - 0.5) * spreadZ * 2;
 
-                let x = startX + ix * DIRT_SIZE;
-                let z = startZ + iz * DIRT_SIZE;
+        // Spawn them slightly in the air so they settle naturally
+        let y = getTerrainHeight(blockCenterX + rx, blockCenterZ + rz) + (Math.random() * 5) + 0.5;
 
-                let terrainY = getTerrainHeight(x, z);
-                let y = terrainY + (l * DIRT_SIZE) + (DIRT_SIZE / 2);
-
-                let isLimb = Math.random() < 0.05 && index > 100; // 5% chance, not base layer
-        let isMud = Math.random() < 0.15 && !isLimb; // 15% chance for a flatter mud pile chunk
+        let isLimb = Math.random() < 0.05 && index > 50;
+        let isMud = Math.random() < 0.15 && !isLimb;
 
         let dirt = new Node(isLimb ? `Limb${index}` : (isMud ? `Mud${index}` : `Debris${index}`));
-                dirt.position.set(x, y, z);
-                dirt.velocity = new Vector3(0, 0, 0);
-                dirt.isSleeping = false;
+        dirt.position.set(blockCenterX + rx, y, blockCenterZ + rz);
+        dirt.velocity = new Vector3(0, 0, 0);
+        dirt.isSleeping = false;
 
-                if (isLimb) {
-                    dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4); // Long and thin
-                    dirt.color = [0.8, 0.6, 0.5, 1.0]; // Skin tone
-                    dirt.isLimb = true;
+        if (isLimb) {
+            dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4);
+            dirt.color = [0.8, 0.6, 0.5, 1.0];
+            dirt.isLimb = true;
             dirt.isMud = false;
-                    dirt.limbPhase = Math.random() * Math.PI * 2;
-                    limbs.push(dirt);
+            dirt.limbPhase = Math.random() * Math.PI * 2;
+            limbs.push(dirt);
         } else if (isMud) {
-            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0); // Flatter, wider mud pile
-            dirt.color = [0.4, 0.25, 0.15, 1.0]; // Brown mud color
+            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0);
+            dirt.color = [0.4, 0.25, 0.15, 1.0];
             dirt.isLimb = false;
             dirt.isMud = true;
-                } else {
-                    let rType = Math.random();
-                    if (rType < 0.2) { // Wall Slab
-                        dirt.scale.set(1.5, 0.3, 1.0);
-                        dirt.color = [0.6, 0.6, 0.6, 1.0];
-                    } else if (rType < 0.3) { // I-beam
-                        dirt.scale.set(0.2, 0.2, 2.0);
-                        dirt.color = [0.4, 0.2, 0.1, 1.0]; // Rusted metal
-                    } else if (rType < 0.5) { // Brick
-                        dirt.scale.set(0.6, 0.3, 0.4);
-                        dirt.color = [0.6, 0.3, 0.2, 1.0]; // Reddish brick
-                    } else { // Generic rubble chunk
-                        let sMod = 0.5 + Math.random() * 0.8;
-                        dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
-                        let g = 0.3 + Math.random() * 0.2;
-                        dirt.color = [g, g, g, 1.0];
-                    }
-                    dirt.isLimb = false;
-                }
-
-                dirtBoxes.push(dirt);
-                index++;
+        } else {
+            let rType = Math.random();
+            if (rType < 0.2) { // Wall Slab
+                dirt.scale.set(1.5, 0.3, 1.0);
+                dirt.color = [0.6, 0.6, 0.6, 1.0];
+            } else if (rType < 0.3) { // I-beam
+                dirt.scale.set(0.2, 0.2, 2.0);
+                dirt.color = [0.4, 0.2, 0.1, 1.0];
+            } else if (rType < 0.5) { // Brick
+                dirt.scale.set(0.6, 0.3, 0.4);
+                dirt.color = [0.6, 0.3, 0.2, 1.0];
+            } else { // Generic rubble chunk
+                let sMod = 0.5 + Math.random() * 0.8;
+                dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
+                let g = 0.3 + Math.random() * 0.2;
+                dirt.color = [g, g, g, 1.0];
             }
+            dirt.isLimb = false;
         }
+
+        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6; // For simple repulsion
+
+        dirtBoxes.push(dirt);
+        index++;
     }
 }
 
@@ -1019,99 +1027,115 @@ function getMatrixTranslation(matrix) {
 function updatePhysics(dt) {
     if (!d9Blade) return;
 
-    // Ensure matrices are up to date for D9
     d9Root.updateMatrix(null);
-
-    // Blade world pos
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
-
-    // Approximate Blade AABB size in world space based on local scales.
-    // The main blade center is 3.5 wide, 1.5 high, 0.2 deep.
-    // Expand depth to act like a scoop
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
-    // Calculate D9 Forward Vector in World Space
     let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y)).normalize();
+    // Calculate lateral 'right' vector to push debris to the sides
+    let rightVec = new Vector3(forward.z, 0, -forward.x);
 
-    // The floor of the 'scoop' is relative to the blade's bottom edge Y
     let scoopFloorY = bladeWorldPos.y - (bladeSize.y / 2) + (DIRT_SIZE / 2);
 
-    // Clear grid for this frame
-    dirtHeightGrid.clear();
-    // Sort dirt array by Y ascending so we can build the heightmap from the ground up
-    dirtBoxes.sort((a, b) => a.position.y - b.position.y);
-
-    // Check collisions and push
+    // 1. Build spatial grid for fast repulsion checks
+    debrisGrid.clear();
     for (let dirt of dirtBoxes) {
-        // Dirt size based on actual node scale, which can vary wildly now (e.g. wall slab vs cube)
+        if (dirt.isSleeping) continue;
+        let key = getGridKey(dirt.position.x, dirt.position.z);
+        if (!debrisGrid.has(key)) debrisGrid.set(key, []);
+        debrisGrid.get(key).push(dirt);
+    }
+
+    // 2. Physics & Collisions
+    for (let dirt of dirtBoxes) {
         let dirtSize = dirt.scale;
 
-        // Simple AABB against the blade center world position
+        // --- Blade Collision (Snowplow Effect) ---
         let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
 
         if (hit) {
-            // Wake up
             dirt.isSleeping = false;
 
-            // If the blade is lifted off the ground and dirt is inside the scoop,
-            // hold it at the scoop floor (picking it up).
+            // Lift mechanic
             if (scoopFloorY > DIRT_SIZE / 2 && dirt.position.y >= scoopFloorY - 0.2) {
                 dirt.position.y = scoopFloorY;
-                dirt.velocity.y = 0;
-            } else {
-                // Otherwise apply upward bias if it's being pushed from below
-                if (dirt.position.y < bladeWorldPos.y + 0.5) {
-                    dirt.velocity.y = 2.0;
-                }
+                if (dirt.velocity.y < 0) dirt.velocity.y = 0;
+            } else if (dirt.position.y < bladeWorldPos.y + 0.5) {
+                dirt.velocity.y = 3.0;
             }
 
-            // Push displacement forward
-            let pushForce = 5.0;
-            dirt.velocity.x = forward.x * pushForce;
-            dirt.velocity.z = forward.z * pushForce;
+            // Calculate which side of the blade the debris is on
+            let toDebris = new Vector3().copy(dirt.position).sub(bladeWorldPos);
+            // Dot product with right vector: > 0 means right side, < 0 means left side
+            let sideDot = rightVec.dot(toDebris);
+            let lateralForce = (sideDot > 0) ? 1.0 : -1.0;
+
+            // Pushing power (Forward + outward lateral arc)
+            let pushForce = 8.0;
+            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.8;
+            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.8;
 
         } else {
-            // Apply Gravity and damping
+            // Apply Gravity
             if (!dirt.isSleeping) {
                 dirt.velocity.y -= GRAVITY * dt;
             }
         }
 
-        // Update Position
+        // --- Particle Soft Body Repulsion ---
+        if (!dirt.isSleeping) {
+            let key = getGridKey(dirt.position.x, dirt.position.z);
+            let nearby = debrisGrid.get(key) || [];
+
+            for (let other of nearby) {
+                if (dirt === other) continue;
+
+                let distSq = dirt.position.distanceToSquared(other.position);
+                let combinedRadii = dirt.radius + other.radius;
+
+                if (distSq < combinedRadii * combinedRadii && distSq > 0.001) {
+                    let dist = Math.sqrt(distSq);
+                    let overlap = combinedRadii - dist;
+
+                    // Push vector
+                    let pushDir = new Vector3().copy(dirt.position).sub(other.position).normalize();
+
+                    // Add gravity/settling logic to repulsion so they don't hover endlessly
+                    if (pushDir.y > 0.5) pushDir.y = 0.5; // limit upward push
+
+                    let force = overlap * 8.0 * dt; // Repulsion strength
+
+                    dirt.velocity.add(new Vector3().copy(pushDir).multiplyScalar(force));
+                    other.isSleeping = false; // wake up neighbors
+                }
+            }
+        }
+
+        // --- Velocity Integration ---
         if (!dirt.isSleeping) {
             let displacement = new Vector3().copy(dirt.velocity).multiplyScalar(dt);
             dirt.position.add(displacement);
 
-            // Damping (Friction)
-            dirt.velocity.x *= 0.9;
-            dirt.velocity.z *= 0.9;
+            // Strong damping for dirt/mud
+            dirt.velocity.x *= 0.85;
+            dirt.velocity.z *= 0.85;
         }
 
-        // Terrain and Stacking Collision
+        // --- Terrain Collision ---
         let terrainY = getTerrainHeight(dirt.position.x, dirt.position.z);
-        let baseHeight = terrainY + DIRT_SIZE / 2;
+        let baseHeight = terrainY + (dirtSize.y / 2);
 
-        // Check heightmap to see if we land on another block
-        let gridKey = getGridKey(dirt.position.x, dirt.position.z);
-        let stackHeight = dirtHeightGrid.get(gridKey) || baseHeight;
-
-        if (dirt.position.y <= stackHeight) {
-            // Landed
-            dirt.position.y = stackHeight;
+        if (dirt.position.y <= baseHeight) {
+            dirt.position.y = baseHeight;
             dirt.velocity.y = 0;
 
-            // Update grid for the next block to land on this one
-            dirtHeightGrid.set(gridKey, stackHeight + DIRT_SIZE);
-
-            // Friction stops it completely if it lands
-            if (Math.abs(dirt.velocity.x) < 0.5 && Math.abs(dirt.velocity.z) < 0.5) {
+            if (Math.abs(dirt.velocity.x) < 0.2 && Math.abs(dirt.velocity.z) < 0.2) {
                 dirt.isSleeping = true;
                 dirt.velocity.set(0,0,0);
             }
         } else {
-            // In air, we just update the stack height so blocks falling together don't pass through
-            // but we don't snap to it yet. This is a simple approximation.
-            dirtHeightGrid.set(gridKey, dirt.position.y + DIRT_SIZE);
+            // High upward velocity damping to prevent anti-gravity hovering
+            dirt.velocity.y -= GRAVITY * 0.5 * dt;
         }
 
         dirt.updateMatrix(null);
@@ -1361,11 +1385,21 @@ function getTerrainHeight(x, z) {
 
     // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over
     let gridKey = getGridKey(x, z);
-    if (dirtHeightGrid && dirtHeightGrid.has(gridKey)) {
-        let pileHeight = dirtHeightGrid.get(gridKey);
-        // Only consider the pile if it's substantial enough to drive on (e.g. > 0.5 unit)
-        if (pileHeight > baseH + 0.5) {
-            return pileHeight;
+    if (debrisGrid && debrisGrid.has(gridKey)) {
+        let nearby = debrisGrid.get(gridKey);
+        let maxPileHeight = baseH;
+        for(let dirt of nearby) {
+            // Ignore blocks currently in the air or moving fast
+            if (!dirt.isSleeping) continue;
+
+            // We only care about the top of the block, not its center position
+            let dirtTopY = dirt.position.y + (dirt.scale.y / 2);
+            if (dirtTopY > maxPileHeight) {
+                maxPileHeight = dirtTopY;
+            }
+        }
+        if (maxPileHeight > baseH + 0.5) {
+            return maxPileHeight;
         }
     }
 
