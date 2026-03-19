@@ -251,10 +251,12 @@ const vsSource = `
 
     varying highp vec3 vLighting;
     varying lowp vec4 vColor;
+    varying highp vec4 vWorldPos; // Expose world pos for checkerboard
 
     void main(void) {
         gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
         vColor = uColor;
+        vWorldPos = aVertexPosition; // We'll pass the scaled vertex pos for the ground
 
         // Apply lighting effect
         highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
@@ -270,9 +272,24 @@ const vsSource = `
 const fsSource = `
     varying highp vec3 vLighting;
     varying lowp vec4 vColor;
+    varying highp vec4 vWorldPos;
+
+    uniform bool uIsGround;
 
     void main(void) {
-        gl_FragColor = vec4(vColor.rgb * vLighting, vColor.a);
+        highp vec4 baseColor = vColor;
+
+        // Procedural Grid/Checkerboard for the ground plane to show scale/speed
+        if (uIsGround) {
+            // Scale world position for the grid size
+            highp vec2 grid = floor(vWorldPos.xz * 1.0); // 1 unit grid blocks
+            highp float checker = mod(grid.x + grid.y, 2.0);
+            if (checker == 0.0) {
+                baseColor.rgb *= 0.9; // Darken alternating squares slightly
+            }
+        }
+
+        gl_FragColor = vec4(baseColor.rgb * vLighting, baseColor.a);
     }
 `;
 
@@ -312,6 +329,7 @@ function initWebGL() {
     // Initialize Box Geometry Buffers
     initBuffers(gl);
 
+    // Dynamic sky color is handled in clear during render loop, set default here
     gl.clearColor(0.53, 0.81, 0.92, 1.0); // Sky blue
     gl.clearDepth(1.0);
     gl.enable(gl.DEPTH_TEST);
@@ -449,6 +467,8 @@ class Node {
             gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
             gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, normalMatrix.elements);
             gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), this.color);
+            // Default uIsGround to false for nodes
+            gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
             gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
@@ -472,6 +492,107 @@ class Node {
 let d9Root;
 let d9BladeArms;
 let d9Blade;
+let d9Exhaust;
+
+let d9TreadsLeft = [];
+let d9TreadsRight = [];
+let treadOffset = 0;
+
+// Helper to define the triangular perimeter
+const trackLength = 2.8;
+const trackHeight = 1.5;
+const sprocketY = 0.5; // Top wheel
+const wheelR = 0.3;
+
+function buildTreads(parentNode, color) {
+    // Top elevated drive sprocket
+    let topWheel = new Node("TopWheel");
+    topWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
+    topWheel.position.set(0, sprocketY, -trackLength / 2 + 0.5);
+    topWheel.color = [0.15, 0.15, 0.15, 1.0];
+    parentNode.add(topWheel);
+
+    // Front bottom idler
+    let frontWheel = new Node("FrontWheel");
+    frontWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
+    frontWheel.position.set(0, -trackHeight / 2 + wheelR, trackLength / 2);
+    frontWheel.color = [0.15, 0.15, 0.15, 1.0];
+    parentNode.add(frontWheel);
+
+    // Rear bottom idler
+    let rearWheel = new Node("RearWheel");
+    rearWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
+    rearWheel.position.set(0, -trackHeight / 2 + wheelR, -trackLength / 2);
+    rearWheel.color = [0.15, 0.15, 0.15, 1.0];
+    parentNode.add(rearWheel);
+
+    // Inner small rollers along the bottom
+    for(let w = 1; w < 4; w++) {
+        let roller = new Node("Roller" + w);
+        roller.scale.set(0.65, 0.3, 0.3);
+        let zPos = -trackLength/2 + (trackLength / 4) * w;
+        roller.position.set(0, -trackHeight / 2 + 0.15, zPos);
+        roller.color = [0.2, 0.2, 0.2, 1.0];
+        parentNode.add(roller);
+    }
+
+    // Create individual treads
+    let treadsArray = (parentNode.name === "TrackLeft") ? d9TreadsLeft : d9TreadsRight;
+    const numTreads = 30; // More treads for triangular shape
+    for (let i = 0; i < numTreads; i++) {
+        let tread = new Node("Tread" + i);
+        tread.scale.set(0.8, 0.1, 0.25);
+        tread.color = [0.05, 0.05, 0.05, 1.0];
+        parentNode.add(tread);
+        treadsArray.push(tread);
+    }
+}
+
+function updateTreadPositions(treadsArray, offset) {
+    // Define the three points of the triangle (centers of the main wheels)
+    let pTop = new Vector3(0, sprocketY, -trackLength / 2 + 0.5);
+    let pFront = new Vector3(0, -trackHeight / 2 + wheelR, trackLength / 2);
+    let pRear = new Vector3(0, -trackHeight / 2 + wheelR, -trackLength / 2);
+
+    // Calculate segment lengths
+    let lenTopFront = Math.hypot(pFront.z - pTop.z, pFront.y - pTop.y);
+    let lenFrontRear = trackLength;
+    let lenRearTop = Math.hypot(pTop.z - pRear.z, pTop.y - pRear.y);
+
+    // Total perimeter length (approximate without curved corners for simplicity)
+    let totalLength = lenTopFront + lenFrontRear + lenRearTop;
+    const numTreads = treadsArray.length;
+
+    for (let i = 0; i < numTreads; i++) {
+        let p = ((i / numTreads) * totalLength + offset) % totalLength;
+        if (p < 0) p += totalLength;
+
+        let tread = treadsArray[i];
+
+        if (p < lenTopFront) {
+            // Top to Front
+            let t = p / lenTopFront;
+            tread.position.set(0, pTop.y + (pFront.y - pTop.y) * t, pTop.z + (pFront.z - pTop.z) * t);
+            tread.rotation.x = Math.atan2(pTop.y - pFront.y, pTop.z - pFront.z);
+            // offset normal outwards
+            tread.position.y += Math.cos(tread.rotation.x) * wheelR;
+            tread.position.z -= Math.sin(tread.rotation.x) * wheelR;
+        } else if (p < lenTopFront + lenFrontRear) {
+            // Front to Rear (Bottom)
+            let t = (p - lenTopFront) / lenFrontRear;
+            tread.position.set(0, pFront.y, pFront.z - lenFrontRear * t);
+            tread.rotation.x = Math.PI;
+            tread.position.y -= wheelR;
+        } else {
+            // Rear to Top
+            let t = (p - (lenTopFront + lenFrontRear)) / lenRearTop;
+            tread.position.set(0, pRear.y + (pTop.y - pRear.y) * t, pRear.z + (pTop.z - pRear.z) * t);
+            tread.rotation.x = Math.atan2(pRear.y - pTop.y, pRear.z - pTop.z);
+            tread.position.y -= Math.cos(tread.rotation.x) * wheelR;
+            tread.position.z += Math.sin(tread.rotation.x) * wheelR;
+        }
+    }
+}
 
 function buildD9() {
     // Colors
@@ -481,22 +602,21 @@ function buildD9() {
 
     // Root: Chassis
     d9Root = new Node("Chassis");
-    d9Root.scale.set(2, 1.5, 4); // Width, Height, Length
+    d9Root.scale.set(2, 1.5, 3.5); // Width, Height, Length
     d9Root.position.set(0, 1, 0);
     d9Root.color = yellow;
 
     // Child 1: Tracks
     let trackLeft = new Node("TrackLeft");
-    trackLeft.scale.set(0.6, 1.2, 4.5);
     trackLeft.position.set(-1.4, -0.2, 0); // Local to chassis
-    trackLeft.color = black;
     d9Root.add(trackLeft);
 
     let trackRight = new Node("TrackRight");
-    trackRight.scale.set(0.6, 1.2, 4.5);
     trackRight.position.set(1.4, -0.2, 0);
-    trackRight.color = black;
     d9Root.add(trackRight);
+
+    buildTreads(trackLeft, black);
+    buildTreads(trackRight, black);
 
     // Child 2: Cab/Engine
     let cab = new Node("Cab");
@@ -511,11 +631,11 @@ function buildD9() {
     engine.color = yellow;
     d9Root.add(engine);
 
-    let exhaust = new Node("Exhaust");
-    exhaust.scale.set(0.15, 1.0, 0.15);
-    exhaust.position.set(0.4, 2.0, 1.5);
-    exhaust.color = darkGray;
-    d9Root.add(exhaust);
+    d9Exhaust = new Node("Exhaust");
+    d9Exhaust.scale.set(0.15, 1.0, 0.15);
+    d9Exhaust.position.set(0.4, 2.0, 1.5);
+    d9Exhaust.color = darkGray;
+    d9Root.add(d9Exhaust);
 
     // Child 3: Blade Arms
     d9BladeArms = new Node("BladeArms");
@@ -577,30 +697,49 @@ window.addEventListener('keyup', (e) => {
 });
 
 let d9Velocity = 0;
+let d9AngularVelocity = 0;
 let d9VelocityY = 0; // vertical velocity for jumping
 
 function updateKinematics(dt) {
     if (!d9Root) return;
 
     const baseMoveSpeed = 5.0;
-    const turnSpeed = 1.5 * dt;
+    const maxTurnSpeed = 1.0; // Reduced base rotation speed
+    const turnAccel = 2.0;
     const bladeSpeed = 1.0 * dt;
 
-    // Count how much dirt is under the tracks to simulate drag
-    let dirtDrag = 0;
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
     let chassisAABB = new Vector3(2.8, 1.5, 4.5); // approximate footprint including tracks
     let dirtSize = new Vector3(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
 
+    // Track drag and push resistance
+    let dirtDrag = 0;
+    let bladePushCount = 0;
+
+    // Blade world pos for push resistance
+    d9Blade.updateMatrix(d9BladeArms.worldMatrix);
+    let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
+    let bladeSize = new Vector3(3.5, 1.5, 1.5);
+
     for (let dirt of dirtBoxes) {
+        // Drag under tracks
         if (checkAABBCollision(dirt.position, dirtSize, chassisWorldPos, chassisAABB)) {
             dirtDrag += 1;
         }
+        // Pushing resistance (approximate front collision)
+        if (checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize)) {
+            bladePushCount += 1;
+        }
     }
 
-    // Reduce target speed based on dirt drag (each block reduces speed slightly, up to 80% reduction)
+    // Heavy mass physics: Top speed is heavily reduced when pushing a massive amount of rubble
+    // Max 90% speed reduction from heavy pushing
+    let pushResistance = Math.min(0.9, bladePushCount * 0.02);
+    // Max 80% speed reduction from track drag
     let dragFactor = Math.min(0.8, dirtDrag * 0.05);
-    let currentMaxSpeed = baseMoveSpeed * (1.0 - dragFactor);
+
+    let combinedResistance = Math.min(0.95, dragFactor + pushResistance);
+    let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
 
     let targetVelocity = 0;
     if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
@@ -614,13 +753,21 @@ function updateKinematics(dt) {
         d9Velocity = Math.max(d9Velocity - accel, targetVelocity);
     }
 
-    // Left/Right: Rotation Y
+    // Left/Right: Rotation Y (with momentum)
+    let targetTurn = 0;
     if (keys['ArrowLeft']) {
-        d9Root.rotation.y += turnSpeed;
+        targetTurn = maxTurnSpeed;
+    } else if (keys['ArrowRight']) {
+        targetTurn = -maxTurnSpeed;
     }
-    if (keys['ArrowRight']) {
-        d9Root.rotation.y -= turnSpeed;
+
+    if (d9AngularVelocity < targetTurn) {
+        d9AngularVelocity = Math.min(d9AngularVelocity + turnAccel * dt, targetTurn);
+    } else if (d9AngularVelocity > targetTurn) {
+        d9AngularVelocity = Math.max(d9AngularVelocity - turnAccel * dt, targetTurn);
     }
+
+    d9Root.rotation.y += d9AngularVelocity * dt;
 
     // Up/Down: Translate forward/backward along local Z
     let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y));
@@ -629,12 +776,20 @@ function updateKinematics(dt) {
         d9Root.position.add(new Vector3().copy(forward).multiplyScalar(d9Velocity * dt));
     }
 
-    // Jump / Terrain matching physics
+    // Jump / Terrain matching physics + Vibrations from rubble
     let wheelBase = 4.5;
     let frontTrackZ = d9Root.position.z + forward.z * (wheelBase / 2);
     let frontTrackX = d9Root.position.x + forward.x * (wheelBase / 2);
     let backTrackZ = d9Root.position.z - forward.z * (wheelBase / 2);
     let backTrackX = d9Root.position.x - forward.x * (wheelBase / 2);
+
+    // Add high-frequency noise/shake if driving over rubble
+    let shakeOffset = 0;
+    let pitchShake = 0;
+    if (dirtDrag > 0 && Math.abs(d9Velocity) > 0.5) {
+        shakeOffset = (Math.random() - 0.5) * 0.1; // +/- 0.05 units Y
+        pitchShake = (Math.random() - 0.5) * 0.05; // +/- 0.025 rad pitch
+    }
 
     let heightFront = getTerrainHeight(frontTrackX, frontTrackZ);
     let heightBack = getTerrainHeight(backTrackX, backTrackZ);
@@ -650,7 +805,7 @@ function updateKinematics(dt) {
 
     if (d9Root.position.y <= targetY) {
         // We hit the ground
-        d9Root.position.y = targetY;
+        d9Root.position.y = targetY + shakeOffset;
         d9VelocityY = 0; // stop falling
 
         // Match pitch to terrain only if grounded
@@ -658,7 +813,7 @@ function updateKinematics(dt) {
         let accelLean = (targetVelocity - d9Velocity) * 0.01;
         // Interpolate pitch to target
         d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 10 * dt;
-        d9Root.rotation.x += accelLean; // add weak accel lean
+        d9Root.rotation.x += accelLean + pitchShake; // add weak accel lean and shake
     } else {
         // Airborne! Maintain current pitch (or slowly level out)
         d9Root.rotation.x *= 0.99;
@@ -673,12 +828,30 @@ function updateKinematics(dt) {
         let bladeBottomY = bladeWorldPos.y - 0.5;
         if (bladeBottomY < bladeTerrainY) {
             let penetration = bladeTerrainY - bladeBottomY;
-            d9Root.position.y += penetration;
+            // Only lift slightly to prevent glitching through
+            d9Root.position.y += penetration * 0.2;
             // Also pitch back a bit to simulate see-saw
             d9Root.rotation.x -= penetration * 0.1;
             // Stop falling if we hit via blade
             if (d9VelocityY < 0) d9VelocityY = 0;
+
+            // If hitting a steep slope (like the ramp face) hard, block forward movement
+            let bladeFrontZ = bladeWorldPos.z + Math.cos(d9Root.rotation.y) * 0.5;
+            let bladeFrontX = bladeWorldPos.x + Math.sin(d9Root.rotation.y) * 0.5;
+            let slopeHeight = getTerrainHeight(bladeFrontX, bladeFrontZ);
+
+            if (slopeHeight > bladeTerrainY + 0.5) { // Sharp incline ahead
+                // Block forward velocity so they must raise the blade
+                if (d9Velocity > 0) d9Velocity = 0;
+            }
         }
+    }
+
+    // Chassis Collision to prevent going *through* the ramp sideways
+    chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
+    let centerTerrainY = getTerrainHeight(chassisWorldPos.x, chassisWorldPos.z);
+    if (d9Root.position.y < centerTerrainY + 0.5) {
+        d9Root.position.y = centerTerrainY + 0.5;
     }
 
     // < / > : Raise/Lower Blade (Rotation X on BladeArms)
@@ -701,14 +874,24 @@ function updateKinematics(dt) {
         cameraPitch += pitchSpeed;
     }
     cameraPitch = Math.max(0, Math.min(Math.PI / 2 - 0.01, cameraPitch)); // Clamp 0 to ~90 deg
+
+    // Animate treads
+    treadOffset += d9Velocity * 0.5 * dt;
+    // Add differential steering for visual effect based on angular velocity
+    let leftTurnDiff = d9AngularVelocity * 1.5 * dt;
+    let rightTurnDiff = -d9AngularVelocity * 1.5 * dt;
+
+    updateTreadPositions(d9TreadsLeft, treadOffset + leftTurnDiff);
+    updateTreadPositions(d9TreadsRight, treadOffset + rightTurnDiff);
 }
 
 
 // Dirt Pile & Physics Logic
 let dirtBoxes = [];
-const DIRT_COUNT = 400;
+const DIRT_COUNT = 800;
 const DIRT_SIZE = 0.4;
 const GRAVITY = 9.8;
+let limbs = [];
 
 // Grid-based heightmap for stacking dirt
 let dirtHeightGrid = new Map();
@@ -720,7 +903,7 @@ function getGridKey(x, z) {
 }
 
 function initDirt() {
-    let layers = 7;
+    let layers = 10;
     let index = 0;
 
     // Pyramid generation
@@ -739,12 +922,28 @@ function initDirt() {
                 let terrainY = getTerrainHeight(x, z);
                 let y = terrainY + (l * DIRT_SIZE) + (DIRT_SIZE / 2);
 
-                let dirt = new Node(`Dirt${index}`);
+                // Randomly vary size for rubble
+                let sMod = 0.5 + Math.random() * 0.8;
+                let isLimb = Math.random() < 0.05 && index > 100; // 5% chance, not base layer
+
+                let dirt = new Node(isLimb ? `Limb${index}` : `Dirt${index}`);
                 dirt.position.set(x, y, z);
-                dirt.scale.set(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
-                dirt.color = [0.4 + Math.random()*0.1, 0.2 + Math.random()*0.1, 0.1, 1.0];
                 dirt.velocity = new Vector3(0, 0, 0);
                 dirt.isSleeping = false;
+
+                if (isLimb) {
+                    dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4); // Long and thin
+                    dirt.color = [0.8, 0.6, 0.5, 1.0]; // Skin tone
+                    dirt.isLimb = true;
+                    dirt.limbPhase = Math.random() * Math.PI * 2;
+                    limbs.push(dirt);
+                } else {
+                    dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
+                    // Gray concrete rubble colors
+                    let g = 0.3 + Math.random() * 0.2;
+                    dirt.color = [g, g, g, 1.0];
+                    dirt.isLimb = false;
+                }
 
                 dirtBoxes.push(dirt);
                 index++;
@@ -871,6 +1070,83 @@ function updatePhysics(dt) {
     }
 }
 
+// Particle Manager (Exhaust Smoke)
+class Particle {
+    constructor() {
+        this.node = new Node("Particle");
+        this.node.scale.set(0.2, 0.2, 0.2);
+        this.node.color = [0.1, 0.1, 0.1, 1.0]; // Dark smoke
+        this.velocity = new Vector3();
+        this.life = 0;
+        this.maxLife = 1.0;
+        this.active = false;
+    }
+}
+
+let particles = [];
+const MAX_PARTICLES = 50;
+
+function initParticles() {
+    for (let i = 0; i < MAX_PARTICLES; i++) {
+        particles.push(new Particle());
+    }
+}
+
+let particleSpawnTimer = 0;
+function updateParticles(dt) {
+    if (!d9Exhaust) return;
+
+    // Smoke generation is tied to D9 velocity/effort
+    let spawnRate = 0.1;
+    if (Math.abs(d9Velocity) > 0.1) spawnRate = 0.03; // Faster spawn when moving
+
+    particleSpawnTimer += dt;
+    if (particleSpawnTimer >= spawnRate) {
+        particleSpawnTimer = 0;
+        // Find inactive particle
+        for (let p of particles) {
+            if (!p.active) {
+                p.active = true;
+                p.life = 0;
+                // Start at exhaust world pos (approx top of pipe)
+                d9Root.updateMatrix(null);
+                let exhaustPos = getMatrixTranslation(d9Exhaust.worldMatrix);
+                // The exhaust local center is 0.5 up from its base (scale Y is 1)
+                // We'll just add a bit to Y to spawn at the tip
+                p.node.position.set(exhaustPos.x, exhaustPos.y + 0.5, exhaustPos.z);
+
+                // Random upward velocity with slight spread
+                p.velocity.set(
+                    (Math.random() - 0.5) * 1.0,
+                    2.0 + Math.random(),
+                    (Math.random() - 0.5) * 1.0
+                );
+                p.maxLife = 1.0 + Math.random() * 0.5;
+                break;
+            }
+        }
+    }
+
+    for (let p of particles) {
+        if (p.active) {
+            p.life += dt;
+            if (p.life >= p.maxLife) {
+                p.active = false;
+            } else {
+                p.node.position.add(new Vector3().copy(p.velocity).multiplyScalar(dt));
+                // Expand
+                let s = 0.2 + (p.life * 0.8);
+                p.node.scale.set(s, s, s);
+                // Fade (update alpha in color array, though our simple shader may not handle true blending,
+                // we'll simulate fade by lightening it toward sky color)
+                let fade = p.life / p.maxLife;
+                p.node.color = [0.1 + fade*0.4, 0.1 + fade*0.7, 0.1 + fade*0.8, 1.0];
+                p.node.updateMatrix(null);
+            }
+        }
+    }
+}
+
 // Main Loop
 let lastTime = 0;
 let viewMatrix = new Matrix4();
@@ -885,8 +1161,14 @@ function render(now) {
     // Update
     updateKinematics(dt);
     updatePhysics(dt);
+    updateParticles(dt);
 
-    // Draw
+    // Draw with dynamic sky gradient
+    // We can simulate a gradient by changing clear color based on camera pitch
+    let skyR = 0.53 - (cameraPitch * 0.2);
+    let skyG = 0.81 - (cameraPitch * 0.1);
+    let skyB = 0.92;
+    gl.clearColor(skyR, skyG, skyB, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // Camera setup
@@ -915,9 +1197,22 @@ function render(now) {
         d9Root.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
-    // Draw Dirt
+    // Draw Dirt / Rubble / Limbs
     for (let dirt of dirtBoxes) {
+        if (dirt.isLimb) {
+            dirt.limbPhase += 5.0 * dt;
+            // Flail animation
+            dirt.rotation.z = Math.sin(dirt.limbPhase) * 0.5;
+            dirt.rotation.x = Math.cos(dirt.limbPhase) * 0.5;
+        }
         dirt.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
+    // Draw Particles
+    for (let p of particles) {
+        if (p.active) {
+            p.node.draw(gl, program, viewMatrix, projectionMatrix);
+        }
     }
 
     for (let r of sceneRamps) {
@@ -925,8 +1220,14 @@ function render(now) {
         r.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
+    for (let b of sceneBuildings) {
+        b.updateMatrix(null);
+        b.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
     // Ground plane (just a big flat box)
-    let groundMat = new Matrix4().makeScale(100, 0.1, 100).multiply(new Matrix4().makeTranslation(0, -0.05, 0));
+    let groundScale = 100;
+    let groundMat = new Matrix4().makeScale(groundScale, 0.1, groundScale).multiply(new Matrix4().makeTranslation(0, -0.05, 0));
     let groundColor = [0.3, 0.5, 0.2, 1.0]; // Grass green
 
     let groundModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, groundMat);
@@ -936,6 +1237,9 @@ function render(now) {
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, groundNormalMatrix.elements);
     gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), groundColor);
+
+    // Enable procedural grid shader logic
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
@@ -957,7 +1261,9 @@ window.onload = () => {
     initWebGL();
     buildD9();
     initDirt();
+    initParticles();
     sceneRamps = buildRamp();
+    sceneBuildings = buildScenery();
     requestAnimationFrame(render);
 };
 
@@ -1007,3 +1313,27 @@ function buildRamp() {
 }
 
 let sceneRamps = [];
+
+let sceneBuildings = [];
+function buildScenery() {
+    let building = new Node("Hospital");
+    building.scale.set(15, 20, 15);
+    building.position.set(-25, 10, 20); // Off to the left
+    building.color = [0.8, 0.8, 0.9, 1.0]; // Light blue/gray
+    sceneBuildings.push(building);
+
+    // Cross sign
+    let crossH = new Node("CrossH");
+    crossH.scale.set(3, 1, 0.5);
+    crossH.position.set(0, 5, 7.6);
+    crossH.color = [0.9, 0.1, 0.1, 1.0];
+    building.add(crossH);
+
+    let crossV = new Node("CrossV");
+    crossV.scale.set(1, 3, 0.5);
+    crossV.position.set(0, 5, 7.6);
+    crossV.color = [0.9, 0.1, 0.1, 1.0];
+    building.add(crossV);
+
+    return sceneBuildings;
+}
