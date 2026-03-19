@@ -749,8 +749,8 @@ function updateKinematics(dt) {
     if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
     if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
 
-    // Smoothly interpolate velocity for acceleration effect
-    let accel = 10.0 * dt;
+    // Smoothly interpolate velocity for acceleration effect (slower to prevent immediate bumping)
+    let accel = 2.0 * dt; // Reduced from 10.0
     if (d9Velocity < targetVelocity) {
         d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
     } else if (d9Velocity > targetVelocity) {
@@ -765,6 +765,7 @@ function updateKinematics(dt) {
         targetTurn = -maxTurnSpeed;
     }
 
+    // Slightly smoother turn acceleration
     if (d9AngularVelocity < targetTurn) {
         d9AngularVelocity = Math.min(d9AngularVelocity + turnAccel * dt, targetTurn);
     } else if (d9AngularVelocity > targetTurn) {
@@ -803,24 +804,44 @@ function updateKinematics(dt) {
     // Negate the pitch difference because our rotation X is inverted visually
     let targetPitch = -Math.atan2(heightFront - heightBack, wheelBase);
 
+    // Calculate lateral height differences for Roll (Side flip)
+    let trackWidth = 4.0;
+    // Left Track Pos
+    let leftTrackX = d9Root.position.x - Math.cos(d9Root.rotation.y) * (trackWidth / 2);
+    let leftTrackZ = d9Root.position.z + Math.sin(d9Root.rotation.y) * (trackWidth / 2);
+    // Right Track Pos
+    let rightTrackX = d9Root.position.x + Math.cos(d9Root.rotation.y) * (trackWidth / 2);
+    let rightTrackZ = d9Root.position.z - Math.sin(d9Root.rotation.y) * (trackWidth / 2);
+
+    let heightLeft = getTerrainHeight(leftTrackX, leftTrackZ);
+    let heightRight = getTerrainHeight(rightTrackX, rightTrackZ);
+
+    // Negative roll because positive Z rotation raises the right side
+    let targetRoll = -Math.atan2(heightLeft - heightRight, trackWidth);
+
     // Apply Gravity to D9 Vertical velocity
     d9VelocityY -= 15.0 * dt;
     d9Root.position.y += d9VelocityY * dt;
 
-    if (d9Root.position.y <= targetY) {
-        // We hit the ground
-        d9Root.position.y = targetY + shakeOffset;
+    if (d9Root.position.y <= targetY + 0.1) {
+        // We hit the ground, interpolate position instead of snapping to prevent jitter
+        d9Root.position.y += (targetY - d9Root.position.y) * 10 * dt + shakeOffset;
+        if (d9Root.position.y < targetY) d9Root.position.y = targetY + shakeOffset;
         d9VelocityY = 0; // stop falling
 
         // Match pitch to terrain only if grounded
         // Positive velocity diff means accelerating forward (lean backward slightly)
         let accelLean = (targetVelocity - d9Velocity) * 0.01;
         // Interpolate pitch to target
-        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 10 * dt;
+        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt; // Smoother pitch interpolation
         d9Root.rotation.x += accelLean + pitchShake; // add weak accel lean and shake
+
+        // Interpolate roll to target
+        d9Root.rotation.z += (targetRoll - d9Root.rotation.z) * 5 * dt;
     } else {
         // Airborne! Maintain current pitch (or slowly level out)
         d9Root.rotation.x *= 0.99;
+        d9Root.rotation.z *= 0.99;
     }
 
     // Ground penetration check for blade (See-Saw effect)
@@ -853,9 +874,15 @@ function updateKinematics(dt) {
 
     // Chassis Collision to prevent going *through* the ramp sideways
     chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
+    // Smart trick for ramp collision: instead of just checking center, check front/back bounds
     let centerTerrainY = getTerrainHeight(chassisWorldPos.x, chassisWorldPos.z);
-    if (d9Root.position.y < centerTerrainY + 0.5) {
-        d9Root.position.y = centerTerrainY + 0.5;
+    let chassisBottom = centerTerrainY + 1.0; // Keep the whole base above terrain
+
+    // Smoothly lift the chassis up if it dips below the terrain level
+    if (d9Root.position.y < chassisBottom) {
+        // Fast upward interpolation to avoid jittering when snapping
+        d9Root.position.y += (chassisBottom - d9Root.position.y) * 15 * dt;
+        if (d9VelocityY < 0) d9VelocityY = 0;
     }
 
     // < / > : Raise/Lower Blade (Rotation X on BladeArms)
@@ -927,8 +954,9 @@ function initDirt() {
                 let y = terrainY + (l * DIRT_SIZE) + (DIRT_SIZE / 2);
 
                 let isLimb = Math.random() < 0.05 && index > 100; // 5% chance, not base layer
+        let isMud = Math.random() < 0.15 && !isLimb; // 15% chance for a flatter mud pile chunk
 
-                let dirt = new Node(isLimb ? `Limb${index}` : `Debris${index}`);
+        let dirt = new Node(isLimb ? `Limb${index}` : (isMud ? `Mud${index}` : `Debris${index}`));
                 dirt.position.set(x, y, z);
                 dirt.velocity = new Vector3(0, 0, 0);
                 dirt.isSleeping = false;
@@ -937,8 +965,14 @@ function initDirt() {
                     dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4); // Long and thin
                     dirt.color = [0.8, 0.6, 0.5, 1.0]; // Skin tone
                     dirt.isLimb = true;
+            dirt.isMud = false;
                     dirt.limbPhase = Math.random() * Math.PI * 2;
                     limbs.push(dirt);
+        } else if (isMud) {
+            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0); // Flatter, wider mud pile
+            dirt.color = [0.4, 0.25, 0.15, 1.0]; // Brown mud color
+            dirt.isLimb = false;
+            dirt.isMud = true;
                 } else {
                     let rType = Math.random();
                     if (rType < 0.2) { // Wall Slab
@@ -1203,6 +1237,30 @@ function render(now) {
     let targetPos = new Vector3().copy(d9Root.position);
     let up = new Vector3(0, 1, 0);
 
+    // Ensure camera stays above the ground/terrain
+    let terrainHeightAtCamera = getTerrainHeight(cameraPos.x, cameraPos.z);
+    if (cameraPos.y < terrainHeightAtCamera + 0.5) {
+        cameraPos.y = terrainHeightAtCamera + 0.5;
+    }
+
+    // Camera Collision against buildings
+    for (let b of sceneBuildings) {
+        let size = b.scale;
+        let pos = b.position;
+        // Basic AABB check between camera pos and building
+        let hit = checkAABBCollision(cameraPos, new Vector3(2, 2, 2), pos, size);
+        if (hit) {
+            // Push camera back towards D9 by shrinking the distance
+            let diffX = d9Root.position.x - cameraPos.x;
+            let diffZ = d9Root.position.z - cameraPos.z;
+            let angleToD9 = Math.atan2(diffZ, diffX);
+
+            // Push it out slightly
+            cameraPos.x += Math.cos(angleToD9) * 2;
+            cameraPos.z += Math.sin(angleToD9) * 2;
+        }
+    }
+
     viewMatrix.makeLookAt(cameraPos, targetPos, up);
 
     // Draw D9
@@ -1289,17 +1347,29 @@ const RAMP_HEIGHT = 4.0;
 const RAMP_WIDTH = 8.0;
 
 function getTerrainHeight(x, z) {
+    let baseH = 0;
     if (Math.abs(x) <= RAMP_WIDTH / 2) {
         if (z > RAMP_START && z < RAMP_END) {
             // Slope up from START to END
             let progress = (z - RAMP_START) / (RAMP_END - RAMP_START);
-            return progress * RAMP_HEIGHT;
+            baseH = progress * RAMP_HEIGHT;
         } else if (z >= RAMP_END && z < RAMP_END + 5) {
             // Flat top before drop
-            return RAMP_HEIGHT;
+            baseH = RAMP_HEIGHT;
         }
     }
-    return 0; // Base ground level
+
+    // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over
+    let gridKey = getGridKey(x, z);
+    if (dirtHeightGrid && dirtHeightGrid.has(gridKey)) {
+        let pileHeight = dirtHeightGrid.get(gridKey);
+        // Only consider the pile if it's substantial enough to drive on (e.g. > 0.5 unit)
+        if (pileHeight > baseH + 0.5) {
+            return pileHeight;
+        }
+    }
+
+    return baseH;
 }
 
 let rampNode;
@@ -1315,15 +1385,15 @@ function buildRamp() {
     rampNode.scale.set(RAMP_WIDTH, 0.2, hypotenuse);
     rampNode.rotation.x = -angle; // Lean up
 
-    // Position it exactly touching y=0 at the start and y=RAMP_HEIGHT at the end
-    // To position a rotated box, we place its center point at the midpoint of the hypotenuse
-    rampNode.position.set(0, RAMP_HEIGHT / 2, (RAMP_START + RAMP_END) / 2);
+    // Align visual top surface perfectly with the mathematical getTerrainHeight plane
+    // Adjust y pos downwards by half its thickness to prevent hovering
+    rampNode.position.set(0, (RAMP_HEIGHT / 2) - 0.1, (RAMP_START + RAMP_END) / 2);
     rampNode.color = [0.25, 0.45, 0.15, 1.0];
 
     // Flat top part
     let rampTopNode = new Node("RampTop");
     rampTopNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, 5);
-    // Position so its top matches RAMP_HEIGHT
+    // Align the very top face to mathematically perfectly equal RAMP_HEIGHT
     rampTopNode.position.set(0, RAMP_HEIGHT / 2, RAMP_END + 2.5);
     rampTopNode.color = [0.2, 0.4, 0.1, 1.0];
 
@@ -1380,6 +1450,32 @@ function createBuilding(name, width, height, depth, x, z, color) {
 
 function buildScenery() {
     let buildings = [];
+
+    // --- Add Blocking Objects (Concrete Slabs, Metal Rods) ---
+    // Placed between buildings or in paths to act as large, solid obstacles
+    let block1 = new Node("ConcreteBlock");
+    block1.scale.set(6, 2, 2);
+    let by1 = getTerrainHeight(-40, 27) + 1; // Exactly on ground
+    block1.position.set(-40, by1, 27);
+    block1.color = [0.5, 0.5, 0.5, 1.0];
+    buildings.push(block1);
+
+    let block2 = new Node("MetalRod");
+    block2.scale.set(0.5, 0.5, 10);
+    let by2 = getTerrainHeight(-10, 30) + 0.25;
+    block2.position.set(-10, by2, 30);
+    block2.color = [0.3, 0.2, 0.1, 1.0];
+    block2.rotation.y = 0.5;
+    buildings.push(block2);
+
+    let block3 = new Node("FallenPillar");
+    block3.scale.set(1.5, 1.5, 8);
+    let by3 = getTerrainHeight(20, -10) + 0.75;
+    block3.position.set(20, by3, -10);
+    block3.color = [0.7, 0.7, 0.6, 1.0];
+    block3.rotation.y = -0.3;
+    buildings.push(block3);
+
 
     // The Main Hospital
     let hospital = createBuilding("Hospital", 15, 20, 15, -25, 20, [0.8, 0.8, 0.9, 1.0]);
