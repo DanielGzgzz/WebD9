@@ -334,6 +334,10 @@ function initWebGL() {
     gl.clearDepth(1.0);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
+
+    // Enable blending for transparent smoke
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 }
 
 function loadShader(gl, type, source) {
@@ -710,8 +714,6 @@ function updateKinematics(dt) {
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
     let chassisAABB = new Vector3(2.8, 1.5, 4.5); // approximate footprint including tracks
-    let dirtSize = new Vector3(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
-
     // Track drag and push resistance
     let dirtDrag = 0;
     let bladePushCount = 0;
@@ -722,12 +724,14 @@ function updateKinematics(dt) {
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
     for (let dirt of dirtBoxes) {
+        let size = dirt.scale; // Use actual node scale for precision AABB
+
         // Drag under tracks
-        if (checkAABBCollision(dirt.position, dirtSize, chassisWorldPos, chassisAABB)) {
+        if (checkAABBCollision(dirt.position, size, chassisWorldPos, chassisAABB)) {
             dirtDrag += 1;
         }
         // Pushing resistance (approximate front collision)
-        if (checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize)) {
+        if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) {
             bladePushCount += 1;
         }
     }
@@ -922,11 +926,9 @@ function initDirt() {
                 let terrainY = getTerrainHeight(x, z);
                 let y = terrainY + (l * DIRT_SIZE) + (DIRT_SIZE / 2);
 
-                // Randomly vary size for rubble
-                let sMod = 0.5 + Math.random() * 0.8;
                 let isLimb = Math.random() < 0.05 && index > 100; // 5% chance, not base layer
 
-                let dirt = new Node(isLimb ? `Limb${index}` : `Dirt${index}`);
+                let dirt = new Node(isLimb ? `Limb${index}` : `Debris${index}`);
                 dirt.position.set(x, y, z);
                 dirt.velocity = new Vector3(0, 0, 0);
                 dirt.isSleeping = false;
@@ -938,10 +940,22 @@ function initDirt() {
                     dirt.limbPhase = Math.random() * Math.PI * 2;
                     limbs.push(dirt);
                 } else {
-                    dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
-                    // Gray concrete rubble colors
-                    let g = 0.3 + Math.random() * 0.2;
-                    dirt.color = [g, g, g, 1.0];
+                    let rType = Math.random();
+                    if (rType < 0.2) { // Wall Slab
+                        dirt.scale.set(1.5, 0.3, 1.0);
+                        dirt.color = [0.6, 0.6, 0.6, 1.0];
+                    } else if (rType < 0.3) { // I-beam
+                        dirt.scale.set(0.2, 0.2, 2.0);
+                        dirt.color = [0.4, 0.2, 0.1, 1.0]; // Rusted metal
+                    } else if (rType < 0.5) { // Brick
+                        dirt.scale.set(0.6, 0.3, 0.4);
+                        dirt.color = [0.6, 0.3, 0.2, 1.0]; // Reddish brick
+                    } else { // Generic rubble chunk
+                        let sMod = 0.5 + Math.random() * 0.8;
+                        dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
+                        let g = 0.3 + Math.random() * 0.2;
+                        dirt.color = [g, g, g, 1.0];
+                    }
                     dirt.isLimb = false;
                 }
 
@@ -995,8 +1009,8 @@ function updatePhysics(dt) {
 
     // Check collisions and push
     for (let dirt of dirtBoxes) {
-        // Dirt size
-        let dirtSize = new Vector3(DIRT_SIZE, DIRT_SIZE, DIRT_SIZE);
+        // Dirt size based on actual node scale, which can vary wildly now (e.g. wall slab vs cube)
+        let dirtSize = dirt.scale;
 
         // Simple AABB against the blade center world position
         let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
@@ -1075,7 +1089,7 @@ class Particle {
     constructor() {
         this.node = new Node("Particle");
         this.node.scale.set(0.2, 0.2, 0.2);
-        this.node.color = [0.1, 0.1, 0.1, 1.0]; // Dark smoke
+        this.node.color = [0.1, 0.1, 0.1, 0.7]; // Dark semi-transparent smoke
         this.velocity = new Vector3();
         this.life = 0;
         this.maxLife = 1.0;
@@ -1137,10 +1151,10 @@ function updateParticles(dt) {
                 // Expand
                 let s = 0.2 + (p.life * 0.8);
                 p.node.scale.set(s, s, s);
-                // Fade (update alpha in color array, though our simple shader may not handle true blending,
-                // we'll simulate fade by lightening it toward sky color)
+                // Fade out using alpha since blending is now enabled
                 let fade = p.life / p.maxLife;
-                p.node.color = [0.1 + fade*0.4, 0.1 + fade*0.7, 0.1 + fade*0.8, 1.0];
+                // Fade from dark grey to lighter grey, with alpha dropping to 0
+                p.node.color = [0.1 + fade*0.2, 0.1 + fade*0.2, 0.1 + fade*0.2, 0.7 - fade*0.7];
                 p.node.updateMatrix(null);
             }
         }
@@ -1290,22 +1304,27 @@ function getTerrainHeight(x, z) {
 
 let rampNode;
 function buildRamp() {
-    rampNode = new Node("Ramp");
-    rampNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, RAMP_END - RAMP_START);
-    // Since it's a box but the terrain function makes it a slope for collision,
-    // we'll just angle the node visually to match the slope.
     let length = RAMP_END - RAMP_START;
+
+    // Calculate hypotenuse to properly size the box to stretch from start to end
+    let hypotenuse = Math.sqrt(RAMP_HEIGHT*RAMP_HEIGHT + length*length);
     let angle = Math.atan2(RAMP_HEIGHT, length);
+
+    rampNode = new Node("Ramp");
+    // Make it thin but stretch the full hypotenuse length
+    rampNode.scale.set(RAMP_WIDTH, 0.2, hypotenuse);
     rampNode.rotation.x = -angle; // Lean up
 
-    // Position it halfway up the slope
+    // Position it exactly touching y=0 at the start and y=RAMP_HEIGHT at the end
+    // To position a rotated box, we place its center point at the midpoint of the hypotenuse
     rampNode.position.set(0, RAMP_HEIGHT / 2, (RAMP_START + RAMP_END) / 2);
     rampNode.color = [0.25, 0.45, 0.15, 1.0];
 
     // Flat top part
     let rampTopNode = new Node("RampTop");
     rampTopNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, 5);
-    rampTopNode.position.set(0, RAMP_HEIGHT, RAMP_END + 2.5); // Fixed top height
+    // Position so its top matches RAMP_HEIGHT
+    rampTopNode.position.set(0, RAMP_HEIGHT / 2, RAMP_END + 2.5);
     rampTopNode.color = [0.2, 0.4, 0.1, 1.0];
 
     // We add them directly to the scene drawing logic later
@@ -1315,25 +1334,75 @@ function buildRamp() {
 let sceneRamps = [];
 
 let sceneBuildings = [];
-function buildScenery() {
-    let building = new Node("Hospital");
-    building.scale.set(15, 20, 15);
-    building.position.set(-25, 10, 20); // Off to the left
-    building.color = [0.8, 0.8, 0.9, 1.0]; // Light blue/gray
-    sceneBuildings.push(building);
 
-    // Cross sign
+function createBuilding(name, width, height, depth, x, z, color) {
+    let b = new Node(name);
+    b.scale.set(width, height, depth);
+    // Position y based on terrain height so it sits properly
+    let terrainY = getTerrainHeight(x, z);
+    b.position.set(x, terrainY + height / 2, z);
+    b.color = color;
+
+    // Create some windows
+    let numWindowsX = Math.max(1, Math.floor(width / 3));
+    let numWindowsY = Math.max(1, Math.floor(height / 4));
+
+    for (let wy = 0; wy < numWindowsY; wy++) {
+        for (let wx = 0; wx < numWindowsX; wx++) {
+            // Front windows
+            let winF = new Node("WindowF");
+            winF.scale.set(1.5, 2, 0.2);
+            // Local space relative to building
+            let lx = -width/2 + (width / numWindowsX) * (wx + 0.5);
+            let ly = -height/2 + 3 + (height / numWindowsY) * wy;
+            winF.position.set(lx, ly, depth/2 + 0.1);
+            winF.color = [0.2, 0.2, 0.4, 1.0]; // Dark window color
+            b.add(winF);
+
+            // Back windows
+            let winB = new Node("WindowB");
+            winB.scale.set(1.5, 2, 0.2);
+            winB.position.set(lx, ly, -depth/2 - 0.1);
+            winB.color = [0.2, 0.2, 0.4, 1.0];
+            b.add(winB);
+        }
+    }
+
+    // Single Door
+    let door = new Node("Door");
+    door.scale.set(2, 3, 0.3);
+    door.position.set(0, -height/2 + 1.5, depth/2 + 0.1);
+    door.color = [0.3, 0.2, 0.1, 1.0]; // Brown door
+    b.add(door);
+
+    return b;
+}
+
+function buildScenery() {
+    let buildings = [];
+
+    // The Main Hospital
+    let hospital = createBuilding("Hospital", 15, 20, 15, -25, 20, [0.8, 0.8, 0.9, 1.0]);
+    // Add Medical Cross to Hospital
     let crossH = new Node("CrossH");
     crossH.scale.set(3, 1, 0.5);
-    crossH.position.set(0, 5, 7.6);
+    crossH.position.set(0, 5, 15/2 + 0.3); // relative to hospital, pop out front
     crossH.color = [0.9, 0.1, 0.1, 1.0];
-    building.add(crossH);
-
+    hospital.add(crossH);
     let crossV = new Node("CrossV");
     crossV.scale.set(1, 3, 0.5);
-    crossV.position.set(0, 5, 7.6);
+    crossV.position.set(0, 5, 15/2 + 0.3);
     crossV.color = [0.9, 0.1, 0.1, 1.0];
-    building.add(crossV);
+    hospital.add(crossV);
+    buildings.push(hospital);
 
-    return sceneBuildings;
+    // Mini City blocks
+    buildings.push(createBuilding("Apt1", 10, 30, 10, -45, 15, [0.7, 0.6, 0.5, 1.0]));
+    buildings.push(createBuilding("Apt2", 12, 15, 12, -35, 40, [0.5, 0.6, 0.7, 1.0]));
+    buildings.push(createBuilding("Office1", 15, 40, 15, -60, 25, [0.3, 0.4, 0.5, 1.0]));
+    buildings.push(createBuilding("Warehouse", 25, 10, 20, 30, -30, [0.8, 0.7, 0.6, 1.0]));
+    buildings.push(createBuilding("Tower", 8, 50, 8, 45, 15, [0.2, 0.2, 0.3, 1.0]));
+    buildings.push(createBuilding("RuinedBlock", 12, 8, 12, 15, 45, [0.4, 0.4, 0.4, 1.0]));
+
+    return buildings;
 }
