@@ -722,6 +722,16 @@ const keys = {};
 
 window.addEventListener('keydown', (e) => {
     keys[e.key] = true;
+
+    // Check for single-press keys
+    if (e.key === 'g' || e.key === 'G') {
+        const garage = document.getElementById('garageMenu');
+        if (garage.style.display === 'none') {
+            openGarage();
+        } else {
+            closeGarage();
+        }
+    }
 });
 
 window.addEventListener('keyup', (e) => {
@@ -1219,11 +1229,43 @@ function updatePhysics(dt) {
     }
 
     // Update Ripper Matrix
+    let ripperWorldPos = new Vector3(0,0,0);
     if (d9Ripper) {
         d9Ripper.updateMatrix(d9Root.worldMatrix);
+        if (d9Ripper.children.length > 1) {
+            let shank = d9Ripper.children[1];
+            shank.updateMatrix(d9Ripper.worldMatrix);
+            ripperWorldPos = getMatrixTranslation(shank.worldMatrix);
+            // Move position to the bottom tip of the shank
+            ripperWorldPos.y -= 0.6;
+        } else {
+            ripperWorldPos = getMatrixTranslation(d9Ripper.worldMatrix);
+        }
     }
-    let ripperWorldPos = d9Ripper ? getMatrixTranslation(d9Ripper.worldMatrix) : new Vector3(0,0,0);
-    let ripperSize = new Vector3(1.5, 1.5, 1.5);
+    let ripperSize = new Vector3(1.0, 1.5, 1.0);
+
+    // Spawn dirt chunks if ripper is lowered and moving forward
+    if (d9Ripper && d9Ripper.rotation.x > 0.15 && d9Velocity > 0.5) {
+        if (Math.random() < 0.4 && dirtBoxes.length < 500) {
+            let dirt = new Node("Soil");
+            let s = 0.2 + Math.random() * 0.3;
+            dirt.scale.set(s, s, s);
+            dirt.position.set(
+                ripperWorldPos.x + (Math.random() - 0.5) * 0.5,
+                getTerrainHeight(ripperWorldPos.x, ripperWorldPos.z) + 0.1,
+                ripperWorldPos.z + (Math.random() - 0.5) * 0.5
+            );
+            dirt.color = [0.4, 0.25, 0.15, 1.0]; // Dark brown soil
+            dirt.velocity = new Vector3(
+                -forward.x * 2.0 + (Math.random() - 0.5),
+                3.0 + Math.random() * 2.0,
+                -forward.z * 2.0 + (Math.random() - 0.5)
+            );
+            dirt.isSleeping = false;
+            dirt.radius = s * 0.6;
+            dirtBoxes.push(dirt);
+        }
+    }
 
     // 2. Physics & Collisions
     for (let dirt of dirtBoxes) {
@@ -1575,6 +1617,57 @@ function addCoffee(amount) {
     if (ui) ui.innerText = coffeeCurrency;
 }
 
+const garageUpgrades = {
+    engine: { cost: 10, level: 0, maxLevel: 5 },
+    fuel: { cost: 15, level: 0, maxLevel: 5 },
+    cooling: { cost: 15, level: 0, maxLevel: 5 },
+    blade: { cost: 20, level: 0, maxLevel: 5 }
+};
+
+function openGarage() {
+    gameState = "GARAGE";
+    document.getElementById('garageMenu').style.display = 'block';
+    updateGarageUI();
+}
+
+function closeGarage() {
+    gameState = "PLAYING";
+    document.getElementById('garageMenu').style.display = 'none';
+}
+
+function buyUpgrade(type) {
+    const upg = garageUpgrades[type];
+    if (upg && coffeeCurrency >= upg.cost && upg.level < upg.maxLevel) {
+        addCoffee(-upg.cost);
+        upg.level++;
+        upg.cost = Math.floor(upg.cost * 1.5); // Increase cost
+        updateGarageUI();
+
+        // Apply immediate effects if any
+        if (type === 'fuel') {
+            engineFuel = 100; // Refuel on upgrade
+        }
+        if (type === 'cooling') {
+            engineHeat = 0; // Cool down on upgrade
+        }
+    }
+}
+
+function updateGarageUI() {
+    for (const [key, upg] of Object.entries(garageUpgrades)) {
+        const btn = document.querySelector(`#upg${key.charAt(0).toUpperCase() + key.slice(1)} button`);
+        if (btn) {
+            if (upg.level >= upg.maxLevel) {
+                btn.innerText = "MAXED";
+                btn.disabled = true;
+            } else {
+                btn.innerText = `Buy (${upg.cost} 📦)`;
+                btn.disabled = coffeeCurrency < upg.cost;
+            }
+        }
+    }
+}
+
 // Bootstrap
 window.onload = () => {
     initWebGL();
@@ -1587,6 +1680,14 @@ window.onload = () => {
         document.getElementById("gameHUD").style.display = "block";
         loadLevel(1);
     });
+
+    // Setup Garage Button
+    let closeGarageBtn = document.getElementById("closeGarageBtn");
+    if (closeGarageBtn) {
+        closeGarageBtn.addEventListener("click", () => {
+            closeGarage();
+        });
+    }
 
     requestAnimationFrame(render);
 };
