@@ -8,18 +8,83 @@
 </head>
 <body>
     <canvas id="glcanvas"></canvas>
-    <div id="ui">
-        <h2>D9 Controls</h2>
-        <p><b>Up/Down:</b> Move Forward/Backward</p>
-        <p><b>Left/Right:</b> Turn Left/Right</p>
-        <p><b>< / > :</b> Raise/Lower Blade</p>
-        <p><b>[ / ] :</b> Camera Angle Up/Down</p>
+    <div id="mainMenu">
+        <h1>Vanilla WebGL D9 Simulator</h1>
+        <p>Drive a bulldozer. Complete ridiculous objectives.</p>
+        <button id="startBtn">Start Mission</button>
     </div>
-    <div id="objectiveUI">
-        <h2>Objective</h2>
-        <p id="objectiveText">Clear the rubble blocking the road!</p>
-        <div class="progress-bar">
-            <div id="progressFill"></div>
+
+    <div id="garageMenu" style="display: none;">
+        <h1>Garage Shop</h1>
+        <p>Spend Turkish Coffee to upgrade your D9!</p>
+        <div class="upgrade-grid">
+            <div class="upgrade-card" id="upgEngine">
+                <h3>Engine Power</h3>
+                <p>Increases max speed</p>
+                <button onclick="buyUpgrade('engine')">Buy (10 ☕)</button>
+            </div>
+            <div class="upgrade-card" id="upgFuel">
+                <h3>Fuel Tank</h3>
+                <p>Reduces fuel consumption</p>
+                <button onclick="buyUpgrade('fuel')">Buy (15 ☕)</button>
+            </div>
+            <div class="upgrade-card" id="upgCooling">
+                <h3>Cooling System</h3>
+                <p>Reduces heat generation</p>
+                <button onclick="buyUpgrade('cooling')">Buy (15 ☕)</button>
+            </div>
+            <div class="upgrade-card" id="upgBlade">
+                <h3>Heavy Blade</h3>
+                <p>More push power, less resistance</p>
+                <button onclick="buyUpgrade('blade')">Buy (20 ☕)</button>
+            </div>
+        </div>
+        <button id="closeGarageBtn">Resume Mission</button>
+    </div>
+
+    <div id="gameHUD" style="display: none;">
+        <div id="currencyHUD">
+            <span class="coffee-icon">☕</span> <span id="coffeeCount">0</span>
+        </div>
+        <div id="ui">
+            <h2>D9 Controls</h2>
+            <p><b>Up/Down:</b> Move Forward/Backward</p>
+            <p><b>Left/Right:</b> Turn Left/Right</p>
+            <p><b>&lt; / &gt; :</b> Raise/Lower Blade</p>
+            <p><b>; / ' :</b> Raise/Lower Ripper Shank</p>
+            <p><b>[ / ] :</b> Camera Angle Up/Down</p>
+            <p><b>C:</b> Chain/Unchain Vehicle</p>
+            <p><b>F:</b> Request Fuel Truck</p>
+            <p><b>G:</b> Open Garage Shop</p>
+        </div>
+        <div id="dashboard">
+            <div class="gauge-container">
+                <span class="gauge-label">SPEED</span>
+                <div class="gauge-bar"><div id="gaugeSpeed" class="gauge-fill"></div></div>
+            </div>
+            <div class="gauge-container">
+                <span class="gauge-label">RPM</span>
+                <div class="gauge-bar"><div id="gaugeRPM" class="gauge-fill"></div></div>
+            </div>
+            <div class="gauge-container">
+                <span class="gauge-label">HEAT</span>
+                <div class="gauge-bar"><div id="gaugeHeat" class="gauge-fill"></div></div>
+            </div>
+            <div class="gauge-container">
+                <span class="gauge-label">FUEL</span>
+                <div class="gauge-bar"><div id="gaugeFuel" class="gauge-fill"></div></div>
+            </div>
+            <div class="gauge-container">
+                <span class="gauge-label">PSI</span>
+                <div class="gauge-bar"><div id="gaugePSI" class="gauge-fill"></div></div>
+            </div>
+        </div>
+        <div id="objectiveUI">
+            <h2>Objective</h2>
+            <p id="objectiveText">Clear the rubble blocking the road!</p>
+            <div class="progress-bar">
+                <div id="progressFill"></div>
+            </div>
         </div>
     </div>
     <script src="app.js"></script>

@@ -6,19 +6,6 @@ body {
     font-family: sans-serif;
 }
 
-#objectiveUI {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(40, 44, 52, 0.9);
-    padding: 20px;
-    border-radius: 12px;
-    color: #fff;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-    width: 280px;
-    border: 2px solid #ffcc00;
-}
 
 #objectiveUI h2 {
     margin: 0 0 10px 0;
@@ -86,3 +73,107 @@ canvas {
 #ui p {
     margin: 5px 0;
 }
+
+#currencyHUD {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    background: rgba(30, 30, 30, 0.9);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 3px solid #cc0000;
+    border-style: solid;
+    border-image: repeating-linear-gradient(45deg, #cc0000, #cc0000 10px, #000 10px, #000 20px) 3;
+    font-size: 24px;
+    font-weight: bold;
+    font-family: sans-serif;
+    z-index: 60;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.coffee-icon {
+    font-size: 28px;
+    color: #ffaa00;
+}
+
+#ui {
+    position: absolute;
+    top: 80px;
+    left: 10px;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding: 10px 20px;
+    border-radius: 5px;
+    pointer-events: none;
+    z-index: 50;
+}
+
+#dashboard {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(30, 30, 30, 0.85);
+    padding: 15px;
+    border-radius: 8px;
+    border: 2px solid #555;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 250px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    pointer-events: none;
+    z-index: 50;
+}
+
+#objectiveUI {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(40, 44, 52, 0.9);
+    padding: 20px;
+    border-radius: 12px;
+    color: #fff;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+    width: 280px;
+    border: 2px solid #ffcc00;
+    z-index: 60;
+}
+
+.gauge-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.gauge-label {
+    color: #ccc;
+    font-weight: bold;
+    font-size: 12px;
+    width: 50px;
+}
+
+.gauge-bar {
+    width: 180px;
+    height: 12px;
+    background-color: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+}
+
+.gauge-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.1s linear, background-color 0.1s linear;
+}
+
+#gaugeSpeed { background-color: #4CAF50; }
+#gaugeRPM { background-color: #2196F3; }
+#gaugeHeat { background-color: #FF9800; }
+#gaugeFuel { background-color: #9C27B0; }
+#gaugePSI { background-color: #00BCD4; }

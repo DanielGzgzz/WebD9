@@ -506,6 +506,7 @@ let d9Root;
 let d9BladeArms;
 let d9Blade;
 let d9Exhaust;
+let d9Ripper;
 
 let d9TreadsLeft = [];
 let d9TreadsRight = [];
@@ -695,6 +696,24 @@ function buildD9() {
     bladeBottom.rotation.x = 0.3; // Curve backward slightly
     bladeBottom.color = darkGray;
     d9Blade.add(bladeBottom);
+
+    // Child 5: Rear Ripper Shank
+    d9Ripper = new Node("Ripper");
+    d9Ripper.position.set(0, 0, -1.8); // Back of chassis
+    d9Root.add(d9Ripper);
+
+    let ripperArm = new Node("RipperArm");
+    ripperArm.scale.set(0.6, 0.4, 1.2);
+    ripperArm.position.set(0, 0, -0.6);
+    ripperArm.color = yellow;
+    d9Ripper.add(ripperArm);
+
+    let ripperShank = new Node("RipperShank");
+    ripperShank.scale.set(0.2, 1.5, 0.4);
+    ripperShank.position.set(0, -0.8, -1.0);
+    ripperShank.rotation.x = 0.2; // Pointed down and forward
+    ripperShank.color = darkGray;
+    d9Ripper.add(ripperShank);
 }
 
 
@@ -712,6 +731,36 @@ window.addEventListener('keyup', (e) => {
 let d9Velocity = 0;
 let d9AngularVelocity = 0;
 let d9VelocityY = 0; // vertical velocity for jumping
+
+// Dashboard logic
+let engineHeat = 0; // 0 to 100
+let engineFuel = 100; // 0 to 100
+let isEngineDead = false;
+
+function updateDashboard(speed, rpm, psi) {
+    let heatEl = document.getElementById('gaugeHeat');
+    let fuelEl = document.getElementById('gaugeFuel');
+    let speedEl = document.getElementById('gaugeSpeed');
+    let rpmEl = document.getElementById('gaugeRPM');
+    let psiEl = document.getElementById('gaugePSI');
+
+    // Normalize logic for gauges
+    let speedPct = Math.min(100, Math.abs(speed) / 15.0 * 100);
+    let rpmPct = Math.min(100, rpm);
+    let psiPct = Math.min(100, psi);
+
+    speedEl.style.width = speedPct + '%';
+    rpmEl.style.width = rpmPct + '%';
+    psiEl.style.width = psiPct + '%';
+    heatEl.style.width = engineHeat + '%';
+    fuelEl.style.width = engineFuel + '%';
+
+    // Red Zones logic
+    rpmEl.style.backgroundColor = rpmPct > 85 ? 'red' : '#2196F3';
+    heatEl.style.backgroundColor = engineHeat > 85 ? 'red' : '#FF9800';
+    psiEl.style.backgroundColor = psiPct > 85 ? 'red' : '#00BCD4';
+    fuelEl.style.backgroundColor = engineFuel < 15 ? 'red' : '#9C27B0';
+}
 
 function updateKinematics(dt) {
     if (!d9Root) return;
@@ -747,6 +796,9 @@ function updateKinematics(dt) {
     if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
     if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
 
+    // Disable movement if engine is dead
+    if (isEngineDead) targetVelocity = 0;
+
     // Faster acceleration
     let accel = 10.0 * dt;
     if (d9Velocity < targetVelocity) {
@@ -754,6 +806,32 @@ function updateKinematics(dt) {
     } else if (d9Velocity > targetVelocity) {
         d9Velocity = Math.max(d9Velocity - accel, targetVelocity);
     }
+
+    // Gauge Logic Computations
+    let rpmBase = (Math.abs(d9Velocity) / baseMoveSpeed) * 60.0;
+    // Add RPM spike when pushing heavy objects
+    let rpmLoad = (combinedResistance * 100.0) * (keys['ArrowUp'] || keys['ArrowDown'] ? 1 : 0);
+    let currentRPM = rpmBase + rpmLoad;
+    let currentPSI = bladePushCount * 3.0; // scale PSI to blade load
+
+    // Calculate Heat & Fuel
+    if (!isEngineDead) {
+        // High RPM generates heat
+        if (currentRPM > 80) engineHeat += (currentRPM - 80) * 0.1 * dt;
+        else engineHeat -= 15.0 * dt; // Cooling
+
+        // Consuming Fuel
+        engineFuel -= (1.0 + currentRPM * 0.02) * dt;
+
+        engineHeat = Math.max(0, Math.min(100, engineHeat));
+        engineFuel = Math.max(0, Math.min(100, engineFuel));
+
+        if (engineHeat >= 100 || engineFuel <= 0) {
+            isEngineDead = true;
+        }
+    }
+
+    updateDashboard(d9Velocity, currentRPM, currentPSI);
 
     // Left/Right: Rotation Y (with momentum)
     let targetTurn = 0;
@@ -842,6 +920,10 @@ function updateKinematics(dt) {
         d9Root.rotation.z *= 0.99;
     }
 
+    // Clamp pitch and roll limits to avoid violent flipping on small debris hits
+    d9Root.rotation.x = Math.max(-0.6, Math.min(0.6, d9Root.rotation.x));
+    d9Root.rotation.z = Math.max(-0.6, Math.min(0.6, d9Root.rotation.z));
+
     // Ground penetration check for blade (See-Saw effect)
     if (d9Blade) {
         d9Root.updateMatrix(null); // Ensure matrices are ready
@@ -882,8 +964,17 @@ function updateKinematics(dt) {
         d9BladeArms.rotation.x += bladeSpeed;
     }
 
-    // Clamp blade rotation to realistic limits
+    // ; / ' : Raise/Lower Ripper (Rotation X on d9Ripper)
+    if (keys[';'] || keys[':']) {
+        d9Ripper.rotation.x -= bladeSpeed;
+    }
+    if (keys['\''] || keys['"']) {
+        d9Ripper.rotation.x += bladeSpeed;
+    }
+
+    // Clamp blade and ripper rotation to realistic limits
     d9BladeArms.rotation.x = Math.max(-0.4, Math.min(0.2, d9BladeArms.rotation.x));
+    d9Ripper.rotation.x = Math.max(-0.5, Math.min(0.3, d9Ripper.rotation.x));
 
     // [ / ] : Camera Pitch (0 to 90 degrees)
     const pitchSpeed = 1.0 * dt;
@@ -895,12 +986,97 @@ function updateKinematics(dt) {
     }
     cameraPitch = Math.max(0, Math.min(Math.PI / 2 - 0.01, cameraPitch)); // Clamp 0 to ~90 deg
 
+    // Key 'f' - Spawn Fuel Truck
+    if (keys['f'] || keys['F']) {
+        if (!gameFuelTruck) {
+            gameFuelTruck = buildFuelTruck();
+            // Start it somewhat near but behind the D9
+            gameFuelTruck.position.set(d9Root.position.x - 10, d9Root.position.y, d9Root.position.z - 20);
+        }
+        keys['f'] = false; // debounce
+        keys['F'] = false;
+    }
+
+    // Key 'c' - Chain / Unchain nearest vehicle
+    if (keys['c'] || keys['C']) {
+        keys['c'] = false; // debounce
+        keys['C'] = false;
+
+        if (chainedVehicle) {
+            chainedVehicle = null; // Unchain
+        } else {
+            // Find closest vehicle
+            let vehicles = [gameTank, gameAPC, gameFuelTruck].filter(v => v !== null);
+            let closest = null;
+            let minDist = CHAIN_LENGTH * CHAIN_LENGTH;
+            for (let v of vehicles) {
+                let distSq = d9Root.position.distanceToSquared(v.position);
+                if (distSq < minDist) {
+                    minDist = distSq;
+                    closest = v;
+                }
+            }
+            if (closest) {
+                chainedVehicle = closest;
+            }
+        }
+    }
+
+    // Chain Towing Logic & Fuel Truck Refueling
+    if (gameFuelTruck) {
+        // Simple AI: drive towards D9 until close enough
+        let toD9 = new Vector3().copy(d9Root.position).sub(gameFuelTruck.position);
+        let dist = toD9.length();
+        if (dist > 8.0) {
+            toD9.normalize();
+            gameFuelTruck.position.add(toD9.multiplyScalar(8.0 * dt)); // Drive speed
+            gameFuelTruck.rotation.y = Math.atan2(toD9.x, toD9.z);
+        } else {
+            // If near, rapidly refuel and cool down
+            engineFuel = Math.min(100, engineFuel + 20.0 * dt);
+            engineHeat = Math.max(0, engineHeat - 20.0 * dt);
+            if (engineFuel > 15 && engineHeat < 85) isEngineDead = false;
+        }
+        gameFuelTruck.position.y = getTerrainHeight(gameFuelTruck.position.x, gameFuelTruck.position.z) + 1.5;
+    }
+
+    if (chainedVehicle) {
+        // Constrain chained vehicle distance
+        let diff = new Vector3().copy(chainedVehicle.position).sub(d9Root.position);
+        let dist = diff.length();
+        if (dist > CHAIN_LENGTH) {
+            diff.normalize();
+            // Pull the vehicle to the max chain length
+            let pullPos = new Vector3().copy(d9Root.position).add(diff.multiplyScalar(CHAIN_LENGTH));
+            chainedVehicle.position.x = pullPos.x;
+            chainedVehicle.position.z = pullPos.z;
+            chainedVehicle.rotation.y = Math.atan2(-diff.x, -diff.z);
+
+            // Towing heavy objects limits max speed
+            currentMaxSpeed *= 0.7;
+        }
+        chainedVehicle.position.y = getTerrainHeight(chainedVehicle.position.x, chainedVehicle.position.z) + 1.5;
+    }
+
     // Animate treads
     treadOffset += d9Velocity * 0.5 * dt;
-    // Add differential steering for visual effect based on angular velocity
-    let leftTurnDiff = d9AngularVelocity * 1.5 * dt;
-    let rightTurnDiff = -d9AngularVelocity * 1.5 * dt;
+    // Differential steering: if turning in place or moving, spin tracks opposite directions
+    let leftTurnDiff = 0;
+    let rightTurnDiff = 0;
+    if (Math.abs(d9Velocity) < 0.1 && Math.abs(d9AngularVelocity) > 0.1) {
+        // Turning in place (skid steer)
+        leftTurnDiff = d9AngularVelocity * 2.0 * dt;
+        rightTurnDiff = -d9AngularVelocity * 2.0 * dt;
+    } else {
+        // Moving and turning
+        leftTurnDiff = d9AngularVelocity * 1.5 * dt;
+        rightTurnDiff = -d9AngularVelocity * 1.5 * dt;
+    }
 
+    // Scale the tread offset differently since the animation is a wrap-around length,
+    // tread positions are determined by mapping p from [0..totalLength]
+    // treadOffset is the continuous offset mapping to `offset` in updateTreadPositions
+    // It's scaled up by totalLength logic later, so this magnitude determines speed.
     updateTreadPositions(d9TreadsLeft, treadOffset + leftTurnDiff);
     updateTreadPositions(d9TreadsRight, treadOffset + rightTurnDiff);
 }
@@ -923,70 +1099,6 @@ function getGridKey(x, z) {
     return `${gridX},${gridZ}`;
 }
 
-function initDirt() {
-    let index = 0;
-
-    // Create a messy rubble field blocking the path ahead
-    // Center of blockage around z=20, spread out across x
-    let blockCenterX = 0;
-    let blockCenterZ = 20;
-    let spreadX = 8; // Width of the road block
-    let spreadZ = 5; // Depth of the pile
-
-    for (let i = 0; i < DIRT_COUNT; i++) {
-        // Randomly scatter around the blockage area
-        let rx = (Math.random() - 0.5) * spreadX * 2;
-        let rz = (Math.random() - 0.5) * spreadZ * 2;
-
-        // Spawn them slightly in the air so they settle naturally
-        let y = getTerrainHeight(blockCenterX + rx, blockCenterZ + rz) + (Math.random() * 5) + 0.5;
-
-        let isLimb = Math.random() < 0.05 && index > 50;
-        let isMud = Math.random() < 0.15 && !isLimb;
-
-        let dirt = new Node(isLimb ? `Limb${index}` : (isMud ? `Mud${index}` : `Debris${index}`));
-        dirt.position.set(blockCenterX + rx, y, blockCenterZ + rz);
-        dirt.velocity = new Vector3(0, 0, 0);
-        dirt.isSleeping = false;
-
-        if (isLimb) {
-            dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4);
-            dirt.color = [0.8, 0.6, 0.5, 1.0];
-            dirt.isLimb = true;
-            dirt.isMud = false;
-            dirt.limbPhase = Math.random() * Math.PI * 2;
-            limbs.push(dirt);
-        } else if (isMud) {
-            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0);
-            dirt.color = [0.4, 0.25, 0.15, 1.0];
-            dirt.isLimb = false;
-            dirt.isMud = true;
-        } else {
-            let rType = Math.random();
-            if (rType < 0.2) { // Wall Slab
-                dirt.scale.set(1.5, 0.3, 1.0);
-                dirt.color = [0.6, 0.6, 0.6, 1.0];
-            } else if (rType < 0.3) { // I-beam
-                dirt.scale.set(0.2, 0.2, 2.0);
-                dirt.color = [0.4, 0.2, 0.1, 1.0];
-            } else if (rType < 0.5) { // Brick
-                dirt.scale.set(0.6, 0.3, 0.4);
-                dirt.color = [0.6, 0.3, 0.2, 1.0];
-            } else { // Generic rubble chunk
-                let sMod = 0.5 + Math.random() * 0.8;
-                dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
-                let g = 0.3 + Math.random() * 0.2;
-                dirt.color = [g, g, g, 1.0];
-            }
-            dirt.isLimb = false;
-        }
-
-        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6; // For simple repulsion
-
-        dirtBoxes.push(dirt);
-        index++;
-    }
-}
 
 // AABB collision utility
 function checkAABBCollision(posA, sizeA, posB, sizeB) {
@@ -1010,12 +1122,92 @@ function updatePhysics(dt) {
     d9Root.updateMatrix(null);
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
+    let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
+    let chassisSize = new Vector3(2.8, 1.5, 4.5);
 
     let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y)).normalize();
     // Calculate lateral 'right' vector to push debris to the sides
     let rightVec = new Vector3(forward.z, 0, -forward.x);
 
     let scoopFloorY = bladeWorldPos.y - (bladeSize.y / 2) + (DIRT_SIZE / 2);
+
+    // 0. Building Collisions & Destruction (Rigid Hit)
+    for (let i = sceneBuildings.length - 1; i >= 0; i--) {
+        let b = sceneBuildings[i];
+        if (!b.isBuilding) continue;
+
+        let hitBlade = checkAABBCollision(b.position, b.scale, bladeWorldPos, bladeSize);
+        let hitChassis = checkAABBCollision(b.position, b.scale, chassisWorldPos, chassisSize);
+
+        if (hitBlade || hitChassis) {
+            // Strong rigid pushback to stop D9 from moving through the object
+            let pushDir = new Vector3().copy(chassisWorldPos).sub(b.position).normalize();
+            pushDir.y = 0;
+
+            // Halt forward velocity immediately if we hit an object
+            if (d9Velocity > 0) d9Velocity = 0;
+
+            // Push D9 back out of intersection
+            d9Root.position.add(pushDir.multiplyScalar(0.5));
+
+            // Apply damage to building
+            let damage = Math.abs(d9Velocity) * 20.0 * dt + 5.0; // static touch causes damage over time
+            b.health -= damage;
+            b.color[0] = Math.min(1.0, b.color[0] + 0.1); // flash red
+
+            // Generate Heat from pushing a solid object
+            engineHeat += 10.0 * dt;
+
+            if (b.health <= 0) {
+                explodeBuilding(b);
+                addCoffee(10); // Reward for destruction
+                sceneBuildings.splice(i, 1);
+            }
+        }
+    }
+
+    // -1. Soldier & Combat Physics
+    for (let i = soldiers.length - 1; i >= 0; i--) {
+        let s = soldiers[i];
+        if (s.isDead) continue;
+
+        let sPos = s.position;
+        let sSize = new Vector3(0.6, 1.2, 0.4);
+
+        let hitBlade = checkAABBCollision(sPos, sSize, bladeWorldPos, bladeSize);
+        let hitChassis = checkAABBCollision(sPos, sSize, chassisWorldPos, chassisSize);
+
+        if (hitBlade || hitChassis) {
+            // Squish logic!
+            s.isDead = true;
+            s.state = "SQUISHED";
+
+            s.children[0].color = [0.8, 0.1, 0.1, 1.0];
+            s.children[1].color = [0.8, 0.1, 0.1, 1.0];
+            s.scale.set(1.5, 0.05, 1.5);
+            s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.05;
+
+            // Reward Coffee for squishing enemies
+            if (s.isEnemy) addCoffee(1);
+
+        } else {
+            // AI
+            s.stateTimer -= dt;
+            if (s.stateTimer <= 0) {
+                s.stateTimer = 1.0 + Math.random() * 2.0;
+                s.state = (s.state === "IDLE") ? "RUN" : "IDLE";
+                if (s.state === "RUN") {
+                    s.rotation.y = Math.random() * Math.PI * 2;
+                }
+            }
+            if (s.state === "RUN") {
+                let sFwd = new Vector3(Math.sin(s.rotation.y), 0, Math.cos(s.rotation.y));
+                s.position.x += sFwd.x * s.speed * dt;
+                s.position.z += sFwd.z * s.speed * dt;
+                s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.6;
+            }
+        }
+    }
 
     // 1. Build spatial grid for fast repulsion checks
     debrisGrid.clear();
@@ -1026,14 +1218,28 @@ function updatePhysics(dt) {
         debrisGrid.get(key).push(dirt);
     }
 
+    // Update Ripper Matrix
+    if (d9Ripper) {
+        d9Ripper.updateMatrix(d9Root.worldMatrix);
+    }
+    let ripperWorldPos = d9Ripper ? getMatrixTranslation(d9Ripper.worldMatrix) : new Vector3(0,0,0);
+    let ripperSize = new Vector3(1.5, 1.5, 1.5);
+
     // 2. Physics & Collisions
     for (let dirt of dirtBoxes) {
         let dirtSize = dirt.scale;
 
         // --- Blade Collision (Snowplow Effect) ---
         let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
+        let hitRipper = d9Ripper && checkAABBCollision(dirt.position, dirtSize, ripperWorldPos, ripperSize);
 
-        if (hit) {
+        if (hitRipper) {
+            dirt.isSleeping = false;
+            // Pop dirt up slightly and drag it backwards along chassis path
+            dirt.velocity.y = 5.0;
+            dirt.velocity.x = -forward.x * 3.0 + (Math.random() - 0.5) * 2.0;
+            dirt.velocity.z = -forward.z * 3.0 + (Math.random() - 0.5) * 2.0;
+        } else if (hit) {
             dirt.isSleeping = false;
 
             // Lift mechanic
@@ -1287,6 +1493,11 @@ function render(now) {
         gameTank.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
+    if (gameFuelTruck) {
+        gameFuelTruck.updateMatrix(null);
+        gameFuelTruck.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
     // Draw Particles
     for (let p of particles) {
         if (p.active) {
@@ -1331,21 +1542,224 @@ function render(now) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
 
+    // Road plane overlay
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
+    let roadScaleZ = 100;
+    let roadScaleX = 8;
+    let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, -0.04, 0)); // Slightly above ground
+    let roadColor = [0.25, 0.25, 0.25, 1.0]; // Dark grey asphalt
+
+    let roadModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, roadMat);
+    let roadNormalMatrix = new Matrix4().copy(roadModelViewMatrix);
+
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadModelViewMatrix.elements);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadNormalMatrix.elements);
+    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), roadColor);
+
+    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+
 
     requestAnimationFrame(render);
+}
+
+// Game State & Level Manager
+let currentLevel = 0;
+let currentMissionType = 1;
+let gameState = "MENU"; // MENU, PLAYING, WON, GARAGE
+
+let coffeeCurrency = 0;
+
+function addCoffee(amount) {
+    coffeeCurrency += amount;
+    let ui = document.getElementById("coffeeCount");
+    if (ui) ui.innerText = coffeeCurrency;
 }
 
 // Bootstrap
 window.onload = () => {
     initWebGL();
     buildD9();
-    initDirt();
     initParticles();
-    sceneRamps = buildRamp();
-    sceneBuildings = buildScenery();
-    gameTank = buildTank();
+
+    // Setup Menu
+    document.getElementById("startBtn").addEventListener("click", () => {
+        document.getElementById("mainMenu").style.display = "none";
+        document.getElementById("gameHUD").style.display = "block";
+        loadLevel(1);
+    });
+
     requestAnimationFrame(render);
 };
+
+function loadLevel(levelIndex) {
+    currentLevel = levelIndex;
+    gameState = "PLAYING";
+    gameWon = false;
+
+    // Reset D9
+    d9Root.position.set(0, 1, 0);
+    d9Root.rotation.set(0, 0, 0);
+    d9Velocity = 0;
+    d9AngularVelocity = 0;
+
+    // Clear old state
+    dirtBoxes = [];
+    limbs = [];
+    debrisGrid.clear();
+    particles.forEach(p => p.active = false);
+
+    // Initialize arrays
+    sceneRamps = [];
+    sceneBuildings = [];
+    soldiers = [];
+    gameTank = null;
+    gameAPC = null;
+    gameFuelTruck = null;
+    initialDebrisInPath = 0;
+
+    // Remove old objective styling
+    document.getElementById("objectiveUI").classList.remove("success-pulse");
+    let uiFill = document.getElementById("progressFill");
+    uiFill.style.width = "0%";
+
+    // Reset Engine state
+    engineFuel = 100;
+    engineHeat = 0;
+    isEngineDead = false;
+    chainedVehicle = null;
+
+    // Randomize Mission Type (1: Escort Tank, 2: Demolition, 3: Ambush)
+    currentMissionType = Math.floor(Math.random() * 3) + 1;
+
+    if (currentMissionType === 1) {
+        initDirt_Level1();
+        sceneRamps = buildRamp();
+        sceneBuildings = buildScenery();
+        gameTank = buildTank();
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the rubble blocking the road!`;
+    } else if (currentMissionType === 2) {
+        sceneRamps = buildRamp();
+        sceneBuildings = buildScenery();
+
+        let targetHQ = createBuilding("EnemyHQ", 20, 30, 20, 0, 40, [0.3, 0.3, 0.3, 1.0]);
+        targetHQ.isTarget = true;
+        sceneBuildings.push(targetHQ);
+
+        for(let i = 0; i < 5 + levelIndex; i++) {
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*20, 30 + Math.random()*5));
+        }
+
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Destroy the Enemy HQ at the end of the road!`;
+    } else if (currentMissionType === 3) {
+        sceneBuildings = buildScenery();
+        gameAPC = buildAPC();
+        gameTank = buildTank();
+        gameTank.position.set(5, 1.5, -15);
+
+        for(let i = 0; i < 6; i++) {
+            soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, -10 + Math.random()*5));
+        }
+
+        // Increase enemy count based on endless level
+        for(let i = 0; i < 10 + (levelIndex * 2); i++) {
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*40, 20 + Math.random()*30));
+        }
+
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Lead the convoy through the ambush!`;
+    }
+}
+
+function advanceLevel() {
+    addCoffee(50); // Big reward for beating level
+    setTimeout(() => {
+        // Endless Campaign loop
+        loadLevel(currentLevel + 1);
+    }, 4000); // Wait 4 seconds after winning before transitioning
+}
+
+function spawnSmokeEffect(pos, size, count) {
+    for (let i = 0; i < count; i++) {
+        for (let p of particles) {
+            if (!p.active) {
+                p.active = true;
+                p.life = 0;
+                p.maxLife = 0.5 + Math.random() * 0.5;
+
+                let spreadX = (Math.random() - 0.5) * size;
+                let spreadY = Math.random() * size * 0.5;
+                let spreadZ = (Math.random() - 0.5) * size;
+
+                p.node.position.set(pos.x + spreadX, pos.y + spreadY, pos.z + spreadZ);
+                p.node.color = [0.2, 0.2, 0.2, 1.0]; // thick dark smoke
+
+                // Explode outwards rapidly
+                p.velocity.set(spreadX * 5.0, 5.0 + Math.random() * 5.0, spreadZ * 5.0);
+                break;
+            }
+        }
+    }
+}
+
+function initDirt_Level1() {
+    let index = 0;
+
+    let blockCenterX = 0;
+    let blockCenterZ = 20;
+    let spreadX = 8;
+    let spreadZ = 5;
+
+    for (let i = 0; i < DIRT_COUNT; i++) {
+        let rx = (Math.random() - 0.5) * spreadX * 2;
+        let rz = (Math.random() - 0.5) * spreadZ * 2;
+
+        let y = getTerrainHeight(blockCenterX + rx, blockCenterZ + rz) + (Math.random() * 5) + 0.5;
+
+        let isLimb = Math.random() < 0.05 && index > 50;
+        let isMud = Math.random() < 0.15 && !isLimb;
+
+        let dirt = new Node(isLimb ? `Limb${index}` : (isMud ? `Mud${index}` : `Debris${index}`));
+        dirt.position.set(blockCenterX + rx, y, blockCenterZ + rz);
+        dirt.velocity = new Vector3(0, 0, 0);
+        dirt.isSleeping = false;
+
+        if (isLimb) {
+            dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4);
+            dirt.color = [0.8, 0.6, 0.5, 1.0];
+            dirt.isLimb = true;
+            dirt.isMud = false;
+            dirt.limbPhase = Math.random() * Math.PI * 2;
+            limbs.push(dirt);
+        } else if (isMud) {
+            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0);
+            dirt.color = [0.4, 0.25, 0.15, 1.0];
+            dirt.isLimb = false;
+            dirt.isMud = true;
+        } else {
+            let rType = Math.random();
+            if (rType < 0.2) {
+                dirt.scale.set(1.5, 0.3, 1.0);
+                dirt.color = [0.6, 0.6, 0.6, 1.0];
+            } else if (rType < 0.3) {
+                dirt.scale.set(0.2, 0.2, 2.0);
+                dirt.color = [0.4, 0.2, 0.1, 1.0];
+            } else if (rType < 0.5) {
+                dirt.scale.set(0.6, 0.3, 0.4);
+                dirt.color = [0.6, 0.3, 0.2, 1.0];
+            } else {
+                let sMod = 0.5 + Math.random() * 0.8;
+                dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
+                let g = 0.3 + Math.random() * 0.2;
+                dirt.color = [g, g, g, 1.0];
+            }
+            dirt.isLimb = false;
+        }
+
+        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6;
+
+        dirtBoxes.push(dirt);
+        index++;
+    }
+}
 
 // Terrain Logic
 // Build a ramp in front of the D9 starting position
@@ -1423,8 +1837,146 @@ let sceneRamps = [];
 
 let sceneBuildings = [];
 let gameTank = null;
+let gameAPC = null;
+let gameFuelTruck = null;
+let soldiers = [];
 let gameWon = false;
 let initialDebrisInPath = 0;
+
+let chainedVehicle = null;
+const CHAIN_LENGTH = 12.0;
+
+function buildSoldier(isEnemy, x, z) {
+    let sRoot = new Node(isEnemy ? "Enemy" : "Friendly");
+    sRoot.position.set(x, getTerrainHeight(x, z) + 0.9, z);
+
+    // Body
+    let body = new Node("Body");
+    body.scale.set(0.6, 1.2, 0.4);
+    body.position.set(0, 0, 0);
+    // Green (Friendly) vs Orange/Brown (Enemy)
+    body.color = isEnemy ? [0.8, 0.4, 0.1, 1.0] : [0.2, 0.6, 0.2, 1.0];
+    sRoot.add(body);
+
+    // Head
+    let head = new Node("Head");
+    head.scale.set(0.4, 0.4, 0.4);
+    head.position.set(0, 0.8, 0);
+    head.color = [0.9, 0.7, 0.6, 1.0];
+    sRoot.add(head);
+
+    sRoot.isEnemy = isEnemy;
+    sRoot.isDead = false;
+    sRoot.health = 20;
+    sRoot.speed = 1.0 + Math.random() * 1.5;
+    sRoot.state = "IDLE"; // IDLE, RUN, SQUISHED
+    sRoot.stateTimer = Math.random() * 2;
+
+    return sRoot;
+}
+
+function buildAPC() {
+    let apcRoot = new Node("APC");
+    apcRoot.position.set(0, 1.5, -20);
+
+    let body = new Node("APCBody");
+    body.scale.set(2.5, 1.5, 4.5);
+    body.color = [0.2, 0.3, 0.4, 1.0]; // Dark blue/grey
+    apcRoot.add(body);
+
+    // Wheels (4 per side)
+    for(let i=0; i<4; i++) {
+        let zPos = -1.5 + i * 1.0;
+        let wL = new Node("WheelL");
+        wL.scale.set(0.4, 0.8, 0.8);
+        wL.position.set(-1.4, -0.6, zPos);
+        wL.color = [0.1, 0.1, 0.1, 1.0];
+        apcRoot.add(wL);
+
+        let wR = new Node("WheelR");
+        wR.scale.set(0.4, 0.8, 0.8);
+        wR.position.set(1.4, -0.6, zPos);
+        wR.color = [0.1, 0.1, 0.1, 1.0];
+        apcRoot.add(wR);
+    }
+
+    return apcRoot;
+}
+
+function explodeBuilding(b) {
+    // Generate rubble based on building size
+    let volume = b.scale.x * b.scale.y * b.scale.z;
+    let rubbleCount = Math.min(100, Math.floor(volume / 5)); // Cap rubble count for performance
+
+    for (let i = 0; i < rubbleCount; i++) {
+        let rx = b.position.x + (Math.random() - 0.5) * b.scale.x;
+        let ry = b.position.y + (Math.random() - 0.5) * b.scale.y;
+        let rz = b.position.z + (Math.random() - 0.5) * b.scale.z;
+
+        let dirt = new Node(`BuildingDebris${i}`);
+        dirt.position.set(rx, ry, rz);
+
+        // Explosive velocity outward from center
+        let vx = (rx - b.position.x) * 2.0;
+        let vy = 5.0 + Math.random() * 5.0; // Shoot up
+        let vz = (rz - b.position.z) * 2.0;
+        dirt.velocity = new Vector3(vx, vy, vz);
+
+        dirt.isSleeping = false;
+
+        let sMod = 0.5 + Math.random() * 1.5;
+        dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
+
+        // Inherit building color loosely
+        let cVar = (Math.random() - 0.5) * 0.2;
+        dirt.color = [
+            Math.max(0, Math.min(1, b.color[0] + cVar)),
+            Math.max(0, Math.min(1, b.color[1] + cVar)),
+            Math.max(0, Math.min(1, b.color[2] + cVar)),
+            1.0
+        ];
+
+        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6;
+        dirtBoxes.push(dirt);
+    }
+}
+
+function buildFuelTruck() {
+    let root = new Node("Oshkosh");
+    root.position.set(-15, 1.5, -30);
+
+    // Cab
+    let cab = new Node("TruckCab");
+    cab.scale.set(2.2, 1.8, 2.5);
+    cab.position.set(0, 0, 2);
+    cab.color = [0.8, 0.7, 0.2, 1.0]; // Desert tan
+    root.add(cab);
+
+    // Tanker
+    let tank = new Node("FuelTank");
+    tank.scale.set(2.0, 2.0, 5.0);
+    tank.position.set(0, 0, -2);
+    tank.color = [0.7, 0.6, 0.2, 1.0];
+    root.add(tank);
+
+    // Wheels
+    for(let i=0; i<3; i++) {
+        let zPos = 2.5 - i * 2.5;
+        let wL = new Node("WheelL");
+        wL.scale.set(0.5, 1.0, 1.0);
+        wL.position.set(-1.3, -0.6, zPos);
+        wL.color = [0.1, 0.1, 0.1, 1.0];
+        root.add(wL);
+
+        let wR = new Node("WheelR");
+        wR.scale.set(0.5, 1.0, 1.0);
+        wR.position.set(1.3, -0.6, zPos);
+        wR.color = [0.1, 0.1, 0.1, 1.0];
+        root.add(wR);
+    }
+
+    return root;
+}
 
 function buildTank() {
     let tankRoot = new Node("Tank");
@@ -1467,48 +2019,152 @@ function buildTank() {
 }
 
 function updateGameLogic(dt) {
-    if (gameWon) {
-        // Tank drives forward once path is cleared
-        gameTank.position.z += 25.0 * dt; // fast tank!
-
-        // Follow terrain height loosely
-        let ty = getTerrainHeight(gameTank.position.x, gameTank.position.z);
-        gameTank.position.y += (ty + 1.5 - gameTank.position.y) * 5 * dt;
-
-        return; // Stop checking logic
-    }
-
-    // Count debris currently in the "roadway"
-    // Roadway is roughly x: -4 to 4, z: 15 to 25
-    let currentDebrisInPath = 0;
-    for(let dirt of dirtBoxes) {
-        if (dirt.position.x > -5 && dirt.position.x < 5 &&
-            dirt.position.z > 12 && dirt.position.z < 28) {
-            currentDebrisInPath++;
-        }
-    }
-
-    if (initialDebrisInPath === 0 && currentDebrisInPath > 0) {
-        initialDebrisInPath = currentDebrisInPath; // capture max
-    }
+    if (gameState !== "PLAYING") return;
 
     let uiText = document.getElementById("objectiveText");
     let uiFill = document.getElementById("progressFill");
 
-    if (initialDebrisInPath > 0) {
-        let cleared = initialDebrisInPath - currentDebrisInPath;
-        let pct = Math.max(0, Math.min(100, (cleared / initialDebrisInPath) * 100));
-        uiFill.style.width = pct + "%";
+    if (currentMissionType === 0) {
+        if (gameWon) return;
 
-        // Count total debris out of initial (which varies due to randomness, often ~150-180 in the box)
-        if (currentDebrisInPath < initialDebrisInPath * 0.7) { // Very forgiving threshold so testing script triggers the tank easily
+        let tutorialWall = sceneBuildings.find(b => b.isTarget);
+        if (!tutorialWall) {
             gameWon = true;
-            uiText.innerText = "Path Cleared! The tank is advancing!";
+            uiText.innerText = "Training Complete! Great job!";
             uiText.style.color = "#44ff44";
             document.getElementById("objectiveUI").classList.add("success-pulse");
             uiFill.style.width = "100%";
+            advanceLevel();
         } else {
-            uiText.innerText = `Clear the rubble! (${currentDebrisInPath} blocks remain)`;
+            let pct = Math.max(0, Math.min(100, ((tutorialWall.maxHealth - tutorialWall.health) / tutorialWall.maxHealth) * 100));
+            uiFill.style.width = pct + "%";
+            uiText.innerText = `Training: Drive forward and collapse the wall! (HP: ${Math.floor(tutorialWall.health)})`;
+        }
+
+    } else if (currentMissionType === 1) {
+        if (gameWon) {
+            if (gameTank) {
+                gameTank.position.z += 25.0 * dt;
+                let ty = getTerrainHeight(gameTank.position.x, gameTank.position.z);
+                gameTank.position.y += (ty + 1.5 - gameTank.position.y) * 5 * dt;
+            }
+            return;
+        }
+
+        let currentDebrisInPath = 0;
+        for(let dirt of dirtBoxes) {
+            if (dirt.position.x > -5 && dirt.position.x < 5 && dirt.position.z > 12 && dirt.position.z < 28) {
+                currentDebrisInPath++;
+            }
+        }
+
+        if (initialDebrisInPath === 0 && currentDebrisInPath > 0) {
+            initialDebrisInPath = currentDebrisInPath;
+        }
+
+        if (initialDebrisInPath > 0) {
+            let cleared = initialDebrisInPath - currentDebrisInPath;
+            let pct = Math.max(0, Math.min(100, (cleared / initialDebrisInPath) * 100));
+            uiFill.style.width = pct + "%";
+
+            if (currentDebrisInPath < initialDebrisInPath * 0.7) {
+                gameWon = true;
+                uiText.innerText = "Path Cleared! The tank is advancing!";
+                uiText.style.color = "#44ff44";
+                document.getElementById("objectiveUI").classList.add("success-pulse");
+                uiFill.style.width = "100%";
+                advanceLevel();
+            } else {
+                uiText.innerText = `Mission ${currentLevel}: Clear the rubble! (${currentDebrisInPath} blocks remain)`;
+                uiText.style.color = "#fff";
+            }
+        }
+    } else if (currentMissionType === 2) {
+        if (gameWon) return;
+
+        // Find Target HQ
+        let targetHQ = sceneBuildings.find(b => b.isTarget);
+        if (!targetHQ) {
+            // Target destroyed!
+            gameWon = true;
+            uiText.innerText = "HQ Destroyed! Excellent work!";
+            uiText.style.color = "#44ff44";
+            document.getElementById("objectiveUI").classList.add("success-pulse");
+            uiFill.style.width = "100%";
+            advanceLevel();
+        } else {
+            // Update progress bar based on HQ health
+            let pct = Math.max(0, Math.min(100, ((targetHQ.maxHealth - targetHQ.health) / targetHQ.maxHealth) * 100));
+            uiFill.style.width = pct + "%";
+            uiText.innerText = `Mission ${currentLevel}: Destroy Enemy HQ! (HP: ${Math.floor(targetHQ.health)})`;
+        }
+    } else if (currentMissionType === 3) {
+        if (gameWon) {
+            if (gameAPC) gameAPC.position.z += 25.0 * dt;
+            if (gameTank) gameTank.position.z += 25.0 * dt;
+
+            // Friendlies charge forward
+            soldiers.filter(s => !s.isEnemy && !s.isDead).forEach(s => {
+                s.position.z += 10.0 * dt;
+                s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.6;
+            });
+            return;
+        }
+
+        // Count squished enemies
+        let totalEnemies = soldiers.filter(s => s.isEnemy).length;
+        let deadEnemies = soldiers.filter(s => s.isEnemy && s.isDead).length;
+
+        // Friendly Tank AI Combat Logic
+        if (gameTank && !gameWon) {
+            // Tank follows D9 loosely but stays behind
+            let targetZ = d9Root.position.z - 15;
+            if (gameTank.position.z < targetZ) {
+                gameTank.position.z += 5.0 * dt;
+            }
+
+            // Randomly shoot at living enemies ahead
+            let aliveEnemies = soldiers.filter(s => s.isEnemy && !s.isDead && s.position.z > gameTank.position.z);
+            if (aliveEnemies.length > 0 && Math.random() < 0.05) { // 5% chance per frame to shoot
+                let target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
+
+                // Gunfire flash & massive smoke at barrel tip
+                let barrelTip = new Vector3(gameTank.position.x, gameTank.position.y + 2.6, gameTank.position.z + 4);
+                spawnSmokeEffect(barrelTip, 2.0, 10);
+
+                // Destroy enemy instantly
+                target.isDead = true;
+                target.state = "SQUISHED";
+                target.children[0].color = [0.8, 0.1, 0.1, 1.0];
+                target.children[1].color = [0.8, 0.1, 0.1, 1.0];
+                target.scale.set(1.5, 0.05, 1.5);
+                target.position.y = getTerrainHeight(target.position.x, target.position.z) + 0.05;
+
+                // Also spawn smoke at enemy location
+                spawnSmokeEffect(target.position, 1.0, 5);
+            }
+        }
+
+        if (gameAPC) {
+            let targetZ = d9Root.position.z - 20;
+            if (gameAPC.position.z < targetZ) {
+                gameAPC.position.z += 6.0 * dt;
+            }
+        }
+
+        let pct = Math.max(0, Math.min(100, (deadEnemies / totalEnemies) * 100));
+        uiFill.style.width = pct + "%";
+
+        if (deadEnemies >= totalEnemies) {
+            gameWon = true;
+            uiText.innerText = "Ambush cleared! Convoy advancing!";
+            uiText.style.color = "#44ff44";
+            document.getElementById("objectiveUI").classList.add("success-pulse");
+            uiFill.style.width = "100%";
+            advanceLevel();
+        } else {
+            uiText.innerText = `Mission ${currentLevel}: Squish the ambush! (${totalEnemies - deadEnemies} enemies remain)`;
+            uiText.style.color = "#fff";
         }
     }
 }
@@ -1520,6 +2176,9 @@ function createBuilding(name, width, height, depth, x, z, color) {
     let terrainY = getTerrainHeight(x, z);
     b.position.set(x, terrainY + height / 2, z);
     b.color = color;
+    b.isBuilding = true;
+    b.health = 100;
+    b.maxHealth = 100;
 
     // Create some windows
     let numWindowsX = Math.max(1, Math.floor(width / 3));
