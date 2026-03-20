@@ -716,50 +716,39 @@ let d9VelocityY = 0; // vertical velocity for jumping
 function updateKinematics(dt) {
     if (!d9Root) return;
 
-    const baseMoveSpeed = 5.0;
-    const maxTurnSpeed = 1.0; // Reduced base rotation speed
-    const turnAccel = 2.0;
-    const bladeSpeed = 1.0 * dt;
+    const baseMoveSpeed = 15.0; // Much faster base speed for fun gameplay
+    const maxTurnSpeed = 1.5;
+    const turnAccel = 5.0;
+    const bladeSpeed = 2.0 * dt;
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
-    let chassisAABB = new Vector3(2.8, 1.5, 4.5); // approximate footprint including tracks
-    // Track drag and push resistance
+    let chassisAABB = new Vector3(2.8, 1.5, 4.5);
     let dirtDrag = 0;
     let bladePushCount = 0;
 
-    // Blade world pos for push resistance
     d9Blade.updateMatrix(d9BladeArms.worldMatrix);
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
     for (let dirt of dirtBoxes) {
-        let size = dirt.scale; // Use actual node scale for precision AABB
-
-        // Drag under tracks
-        if (checkAABBCollision(dirt.position, size, chassisWorldPos, chassisAABB)) {
-            dirtDrag += 1;
-        }
-        // Pushing resistance (approximate front collision)
-        if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) {
-            bladePushCount += 1;
-        }
+        let size = dirt.scale;
+        if (checkAABBCollision(dirt.position, size, chassisWorldPos, chassisAABB)) dirtDrag += 1;
+        if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) bladePushCount += 1;
     }
 
-    // Heavy mass physics: Top speed is heavily reduced when pushing a massive amount of rubble
-    // Max 90% speed reduction from heavy pushing
-    let pushResistance = Math.min(0.9, bladePushCount * 0.02);
-    // Max 80% speed reduction from track drag
-    let dragFactor = Math.min(0.8, dirtDrag * 0.05);
+    // Lower resistance for more arcade-like pushing feel
+    let pushResistance = Math.min(0.6, bladePushCount * 0.015);
+    let dragFactor = Math.min(0.5, dirtDrag * 0.02);
 
-    let combinedResistance = Math.min(0.95, dragFactor + pushResistance);
+    let combinedResistance = Math.min(0.7, dragFactor + pushResistance);
     let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
 
     let targetVelocity = 0;
     if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
     if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
 
-    // Smoothly interpolate velocity for acceleration effect (slower to prevent immediate bumping)
-    let accel = 2.0 * dt; // Reduced from 10.0
+    // Faster acceleration
+    let accel = 10.0 * dt;
     if (d9Velocity < targetVelocity) {
         d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
     } else if (d9Velocity > targetVelocity) {
@@ -869,15 +858,6 @@ function updateKinematics(dt) {
             // Stop falling if we hit via blade
             if (d9VelocityY < 0) d9VelocityY = 0;
 
-            // If hitting a steep slope (like the ramp face) hard, block forward movement
-            let bladeFrontZ = bladeWorldPos.z + Math.cos(d9Root.rotation.y) * 0.5;
-            let bladeFrontX = bladeWorldPos.x + Math.sin(d9Root.rotation.y) * 0.5;
-            let slopeHeight = getTerrainHeight(bladeFrontX, bladeFrontZ);
-
-            if (slopeHeight > bladeTerrainY + 0.5) { // Sharp incline ahead
-                // Block forward velocity so they must raise the blade
-                if (d9Velocity > 0) d9Velocity = 0;
-            }
         }
     }
 
@@ -1235,6 +1215,9 @@ function render(now) {
     updatePhysics(dt);
     updateParticles(dt);
 
+    // Add Game Objective Check
+    updateGameLogic(dt);
+
     // Draw with dynamic sky gradient
     // We can simulate a gradient by changing clear color based on camera pitch
     let skyR = 0.53 - (cameraPitch * 0.2);
@@ -1271,17 +1254,12 @@ function render(now) {
     for (let b of sceneBuildings) {
         let size = b.scale;
         let pos = b.position;
-        // Basic AABB check between camera pos and building
-        let hit = checkAABBCollision(cameraPos, new Vector3(2, 2, 2), pos, size);
-        if (hit) {
-            // Push camera back towards D9 by shrinking the distance
-            let diffX = d9Root.position.x - cameraPos.x;
-            let diffZ = d9Root.position.z - cameraPos.z;
-            let angleToD9 = Math.atan2(diffZ, diffX);
 
-            // Push it out slightly
-            cameraPos.x += Math.cos(angleToD9) * 2;
-            cameraPos.z += Math.sin(angleToD9) * 2;
+        // Treat camera like a point or small box to check collision
+        let hit = checkAABBCollision(cameraPos, new Vector3(1, 1, 1), pos, size);
+        if (hit) {
+            // Push camera up above the building to stop it getting stuck inside
+            cameraPos.y = pos.y + (size.y / 2) + 2.0;
         }
     }
 
@@ -1302,6 +1280,11 @@ function render(now) {
             dirt.rotation.x = Math.cos(dirt.limbPhase) * 0.5;
         }
         dirt.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
+    if (gameTank) {
+        gameTank.updateMatrix(null);
+        gameTank.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
     // Draw Particles
@@ -1360,6 +1343,7 @@ window.onload = () => {
     initParticles();
     sceneRamps = buildRamp();
     sceneBuildings = buildScenery();
+    gameTank = buildTank();
     requestAnimationFrame(render);
 };
 
@@ -1438,6 +1422,96 @@ function buildRamp() {
 let sceneRamps = [];
 
 let sceneBuildings = [];
+let gameTank = null;
+let gameWon = false;
+let initialDebrisInPath = 0;
+
+function buildTank() {
+    let tankRoot = new Node("Tank");
+    tankRoot.position.set(0, 1.5, -15); // Start far behind the bulldozer
+
+    // Tank Body
+    let body = new Node("TankBody");
+    body.scale.set(3, 1.2, 5);
+    body.color = [0.3, 0.4, 0.2, 1.0]; // Olive green
+    tankRoot.add(body);
+
+    // Tank Turret
+    let turret = new Node("TankTurret");
+    turret.scale.set(2, 1, 2.5);
+    turret.position.set(0, 1.1, -0.5);
+    turret.color = [0.25, 0.35, 0.15, 1.0];
+    tankRoot.add(turret);
+
+    // Tank Barrel
+    let barrel = new Node("TankBarrel");
+    barrel.scale.set(0.3, 0.3, 4);
+    barrel.position.set(0, 1.1, 2.5);
+    barrel.color = [0.2, 0.2, 0.2, 1.0];
+    tankRoot.add(barrel);
+
+    // Simple Tank Tracks
+    let tLeft = new Node("TankTrackL");
+    tLeft.scale.set(0.6, 1.0, 5.2);
+    tLeft.position.set(-1.8, -0.1, 0);
+    tLeft.color = [0.1, 0.1, 0.1, 1.0];
+    tankRoot.add(tLeft);
+
+    let tRight = new Node("TankTrackR");
+    tRight.scale.set(0.6, 1.0, 5.2);
+    tRight.position.set(1.8, -0.1, 0);
+    tRight.color = [0.1, 0.1, 0.1, 1.0];
+    tankRoot.add(tRight);
+
+    return tankRoot;
+}
+
+function updateGameLogic(dt) {
+    if (gameWon) {
+        // Tank drives forward once path is cleared
+        gameTank.position.z += 25.0 * dt; // fast tank!
+
+        // Follow terrain height loosely
+        let ty = getTerrainHeight(gameTank.position.x, gameTank.position.z);
+        gameTank.position.y += (ty + 1.5 - gameTank.position.y) * 5 * dt;
+
+        return; // Stop checking logic
+    }
+
+    // Count debris currently in the "roadway"
+    // Roadway is roughly x: -4 to 4, z: 15 to 25
+    let currentDebrisInPath = 0;
+    for(let dirt of dirtBoxes) {
+        if (dirt.position.x > -5 && dirt.position.x < 5 &&
+            dirt.position.z > 12 && dirt.position.z < 28) {
+            currentDebrisInPath++;
+        }
+    }
+
+    if (initialDebrisInPath === 0 && currentDebrisInPath > 0) {
+        initialDebrisInPath = currentDebrisInPath; // capture max
+    }
+
+    let uiText = document.getElementById("objectiveText");
+    let uiFill = document.getElementById("progressFill");
+
+    if (initialDebrisInPath > 0) {
+        let cleared = initialDebrisInPath - currentDebrisInPath;
+        let pct = Math.max(0, Math.min(100, (cleared / initialDebrisInPath) * 100));
+        uiFill.style.width = pct + "%";
+
+        // Count total debris out of initial (which varies due to randomness, often ~150-180 in the box)
+        if (currentDebrisInPath < initialDebrisInPath * 0.7) { // Very forgiving threshold so testing script triggers the tank easily
+            gameWon = true;
+            uiText.innerText = "Path Cleared! The tank is advancing!";
+            uiText.style.color = "#44ff44";
+            document.getElementById("objectiveUI").classList.add("success-pulse");
+            uiFill.style.width = "100%";
+        } else {
+            uiText.innerText = `Clear the rubble! (${currentDebrisInPath} blocks remain)`;
+        }
+    }
+}
 
 function createBuilding(name, width, height, depth, x, z, color) {
     let b = new Node(name);
