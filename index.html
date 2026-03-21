@@ -8,75 +8,44 @@
 </head>
 <body>
     <canvas id="glcanvas"></canvas>
-
     <div id="mainMenu">
-        <div class="logo">Web D9 Simulator</div>
-        <button class="menu-btn" id="startBtn">Start Mission</button>
-        <button class="menu-btn" id="helpBtn">Help & Controls</button>
-    </div>
-
-    <!-- Help Menu -->
-    <div id="helpMenu" style="display: none;">
-        <h1 style="color: #FFD166; font-size: 36px; margin-bottom: 20px;">Advanced Bulldozer Manual</h1>
-        <div style="max-width: 600px; font-size: 18px; line-height: 1.6; background: #222; padding: 20px; border-radius: 10px; border: 2px solid #555;">
-            <p><b>Movement:</b> Arrow Keys. Differential steering spins tracks opposite directions.</p>
-            <p><b>Surgical Blade Control:</b> Use &lt; and &gt; to raise/lower blade. <br><span style="color:#aaa; font-size: 14px;"><i>Tip: Tilted back acts as a bucket to carry dirt. Tilted forward drops it smoothly for precise stacking.</i></span></p>
-            <p><b>Ripper Shank:</b> Use ; and ' to raise/lower the rear ripper claw.</p>
-            <p><b>Rope & Towing:</b> Press C near a vehicle to tether it to the Shank.</p>
-            <p><b>Refuel Truck:</b> Press F to call the Oshkosh. (Requires slow speed to hook up).</p>
-            <p><b>Garage:</b> Press G to spend Elite Coffee on upgrades.</p>
-        </div>
-        <button id="closeHelpBtn" class="menu-btn" style="background: #C1121F; color: white;">Close Manual</button>
-    </div>
-
-    <!-- Level Complete / Refuel Menu -->
-    <div id="levelCompleteMenu" style="display: none;">
-        <h1 style="color: #4CAF50; font-size: 48px; text-transform: uppercase;">Mission Complete!</h1>
-        <p style="font-size: 24px; margin-bottom: 30px;">Refuel and prepare for the next objective.</p>
-        <div id="refuelStats" style="background: #222; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; border: 2px solid #555;">
-            <p style="font-size: 20px; color: yellow;">Reward: <span style="font-weight: bold;">+50 Elite Coffee</span>
-                <svg width="24" height="24" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;"><rect x="10" y="20" width="80" height="90" rx="5" fill="#C1121F"/><rect x="10" y="20" width="80" height="20" fill="#1A1A1A"/><path d="M10 20 Q 50 10 90 20 Z" fill="#1A1A1A"/><path d="M30 60 L50 45 L70 60 L60 85 L40 85 Z" fill="#FDF0D5"/><rect x="10" y="40" width="80" height="4" fill="#1A1A1A"/><rect x="10" y="100" width="80" height="4" fill="#1A1A1A"/></svg>
-            </p>
-            <p id="truckStatus">The Fuel Truck (Oshkosh) is arriving...</p>
-        </div>
-        <button id="nextLevelBtn" class="menu-btn" style="display:none;">Proceed to Next Area</button>
+        <h1>Vanilla WebGL D9 Simulator</h1>
+        <p>Drive a bulldozer. Complete ridiculous objectives.</p>
+        <button id="startBtn">Start Mission</button>
     </div>
 
     <div id="garageMenu" style="display: none;">
-        <h1 style="font-size: 48px; color: #F4A460;">Garage Shop</h1>
-        <p style="font-size: 20px;">Spend Elite Coffee to upgrade your D9!</p>
+        <h1>Garage Shop</h1>
+        <p>Spend Packages to upgrade your D9!</p>
         <div class="upgrade-grid">
             <div class="upgrade-card" id="upgEngine">
                 <h3>Engine Power</h3>
                 <p>Increases max speed</p>
-                <button onclick="buyUpgrade('engine')">Buy (10)</button>
+                <button onclick="buyUpgrade('engine')">Buy (10 📦)</button>
             </div>
             <div class="upgrade-card" id="upgFuel">
                 <h3>Fuel Tank</h3>
                 <p>Reduces fuel consumption</p>
-                <button onclick="buyUpgrade('fuel')">Buy (15)</button>
+                <button onclick="buyUpgrade('fuel')">Buy (15 📦)</button>
             </div>
             <div class="upgrade-card" id="upgCooling">
                 <h3>Cooling System</h3>
                 <p>Reduces heat generation</p>
-                <button onclick="buyUpgrade('cooling')">Buy (15)</button>
+                <button onclick="buyUpgrade('cooling')">Buy (15 📦)</button>
             </div>
             <div class="upgrade-card" id="upgBlade">
                 <h3>Heavy Blade</h3>
                 <p>More push power, less resistance</p>
-                <button onclick="buyUpgrade('blade')">Buy (20)</button>
+                <button onclick="buyUpgrade('blade')">Buy (20 📦)</button>
             </div>
         </div>
-        <button id="closeGarageBtn" class="menu-btn" style="margin-top: 30px;">Resume Mission</button>
+        <button id="closeGarageBtn">Resume Mission</button>
     </div>
 
-    <div id="hud">
+    <div id="gameHUD" style="display: none;">
         <div id="currencyHUD">
-            <span class="coffee-icon">
-                <svg width="24" height="24" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;"><rect x="10" y="20" width="80" height="90" rx="5" fill="#C1121F"/><rect x="10" y="20" width="80" height="20" fill="#1A1A1A"/><path d="M10 20 Q 50 10 90 20 Z" fill="#1A1A1A"/><path d="M30 60 L50 45 L70 60 L60 85 L40 85 Z" fill="#FDF0D5"/><rect x="10" y="40" width="80" height="4" fill="#1A1A1A"/><rect x="10" y="100" width="80" height="4" fill="#1A1A1A"/></svg>
-            </span> <span id="coffeeCount">0</span>
+            <span class="coffee-icon">📦</span> <span id="coffeeCount">0</span>
         </div>
-
         <div id="ui">
             <h2>D9 Controls</h2>
             <p><b>Up/Down:</b> Move Forward/Backward</p>
@@ -88,15 +57,6 @@
             <p><b>F:</b> Request Fuel Truck</p>
             <p><b>G:</b> Open Garage Shop</p>
         </div>
-
-        <div id="objectiveUI">
-            <h2>Objective</h2>
-            <p id="objectiveText">Clear the rubble blocking the road!</p>
-            <div class="progress-bar">
-                <div id="progressFill"></div>
-            </div>
-        </div>
-
         <div id="dashboard">
             <div class="gauge-container">
                 <span class="gauge-label">SPEED</span>
@@ -119,10 +79,12 @@
                 <div class="gauge-bar"><div id="gaugePSI" class="gauge-fill"></div></div>
             </div>
         </div>
-
-        <div id="minimapContainer">
-            <div style="text-align: center; color: white; font-size: 10px; background: #333; padding: 2px;">TACTICAL MAP</div>
-            <canvas id="minimapCanvas" width="150" height="130"></canvas>
+        <div id="objectiveUI">
+            <h2>Objective</h2>
+            <p id="objectiveText">Clear the rubble blocking the road!</p>
+            <div class="progress-bar">
+                <div id="progressFill"></div>
+            </div>
         </div>
     </div>
     <script src="app.js"></script>
