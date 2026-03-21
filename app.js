@@ -1,78 +1,23 @@
-// Math Library
-
 class Vector3 {
     constructor(x = 0, y = 0, z = 0) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
+        this.x = x; this.y = y; this.z = z;
     }
-
     set(x, y, z) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        return this;
+        this.x = x; this.y = y; this.z = z; return this;
     }
-
-    clone() {
-        return new Vector3(this.x, this.y, this.z);
-    }
-
-    add(v) {
-        this.x += v.x;
-        this.y += v.y;
-        this.z += v.z;
-        return this;
-    }
-
-    sub(v) {
-        this.x -= v.x;
-        this.y -= v.y;
-        this.z -= v.z;
-        return this;
-    }
-
-    multiplyScalar(s) {
-        this.x *= s;
-        this.y *= s;
-        this.z *= s;
-        return this;
-    }
-
-    length() {
-        return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
-    }
-
-    lengthSq() {
-        return this.x * this.x + this.y * this.y + this.z * this.z;
-    }
-
-    distanceToSquared(v) {
-        let dx = this.x - v.x, dy = this.y - v.y, dz = this.z - v.z;
-        return dx * dx + dy * dy + dz * dz;
-    }
-
+    clone() { return new Vector3(this.x, this.y, this.z); }
+    add(v) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
+    sub(v) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+    multiplyScalar(s) { this.x *= s; this.y *= s; this.z *= s; return this; }
+    lengthSq() { return this.x * this.x + this.y * this.y + this.z * this.z; }
+    length() { return Math.sqrt(this.lengthSq()); }
     normalize() {
         let len = this.length();
-        if (len > 0) {
-            this.x /= len;
-            this.y /= len;
-            this.z /= len;
-        }
+        if (len > 0) { this.x /= len; this.y /= len; this.z /= len; }
         return this;
     }
-
-    dot(v) {
-        return this.x * v.x + this.y * v.y + this.z * v.z;
-    }
-
-    cross(v) {
-        let x = this.x, y = this.y, z = this.z;
-        this.x = y * v.z - z * v.y;
-        this.y = z * v.x - x * v.z;
-        this.z = x * v.y - y * v.x;
-        return this;
-    }
+    distanceTo(v) { return Math.sqrt((this.x - v.x)**2 + (this.y - v.y)**2 + (this.z - v.z)**2); }
+    copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; return this; }
 }
 
 class Matrix4 {
@@ -84,31 +29,18 @@ class Matrix4 {
             0, 0, 0, 1
         ]);
     }
-
     identity() {
-        this.elements.set([
-            1, 0, 0, 0,
-            0, 1, 0, 0,
-            0, 0, 1, 0,
-            0, 0, 0, 1
-        ]);
+        this.elements.set([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
         return this;
     }
-
     copy(m) {
         this.elements.set(m.elements);
         return this;
     }
-
-    multiply(m) {
-        return this.multiplyMatrices(this, m);
-    }
-
     multiplyMatrices(a, b) {
         let ae = a.elements;
         let be = b.elements;
         let te = this.elements;
-
         let a11 = ae[0], a12 = ae[4], a13 = ae[8], a14 = ae[12];
         let a21 = ae[1], a22 = ae[5], a23 = ae[9], a24 = ae[13];
         let a31 = ae[2], a32 = ae[6], a33 = ae[10], a34 = ae[14];
@@ -141,7 +73,15 @@ class Matrix4 {
 
         return this;
     }
-
+    multiply(m) {
+        return this.multiplyMatrices(this.clone(), m);
+    }
+    clone() {
+        let te = this.elements;
+        let m = new Matrix4();
+        m.elements.set(te);
+        return m;
+    }
     makeTranslation(x, y, z) {
         this.elements.set([
             1, 0, 0, 0,
@@ -151,7 +91,6 @@ class Matrix4 {
         ]);
         return this;
     }
-
     makeRotationX(theta) {
         let c = Math.cos(theta), s = Math.sin(theta);
         this.elements.set([
@@ -162,7 +101,6 @@ class Matrix4 {
         ]);
         return this;
     }
-
     makeRotationY(theta) {
         let c = Math.cos(theta), s = Math.sin(theta);
         this.elements.set([
@@ -173,7 +111,6 @@ class Matrix4 {
         ]);
         return this;
     }
-
     makeRotationZ(theta) {
         let c = Math.cos(theta), s = Math.sin(theta);
         this.elements.set([
@@ -184,7 +121,6 @@ class Matrix4 {
         ]);
         return this;
     }
-
     makeScale(x, y, z) {
         this.elements.set([
             x, 0, 0, 0,
@@ -194,7 +130,6 @@ class Matrix4 {
         ]);
         return this;
     }
-
     makePerspective(fov, aspect, near, far) {
         let f = 1.0 / Math.tan(fov / 2);
         let nf = 1 / (near - far);
@@ -206,1415 +141,658 @@ class Matrix4 {
         ]);
         return this;
     }
-
-    makeLookAt(eye, target, up) {
-        let z = new Vector3(eye.x - target.x, eye.y - target.y, eye.z - target.z).normalize();
-        if (z.length() === 0) {
-            z.z = 1;
-        }
-        let x = new Vector3().copy(up).cross(z).normalize();
-        if (x.length() === 0) {
-            if (Math.abs(up.z) === 1) z.x += 0.0001;
-            else z.z += 0.0001;
-            z.normalize();
-            x.copy(up).cross(z).normalize();
-        }
-        let y = new Vector3().copy(z).cross(x);
-
+    makeLookAt(eye, center, up) {
+        let z0 = eye.x - center.x, z1 = eye.y - center.y, z2 = eye.z - center.z;
+        let len = Math.sqrt(z0*z0 + z1*z1 + z2*z2);
+        if (len > 0) { z0 /= len; z1 /= len; z2 /= len; }
+        let x0 = up.y * z2 - up.z * z1, x1 = up.z * z0 - up.x * z2, x2 = up.x * z1 - up.y * z0;
+        len = Math.sqrt(x0*x0 + x1*x1 + x2*x2);
+        if (len > 0) { x0 /= len; x1 /= len; x2 /= len; }
+        let y0 = z1 * x2 - z2 * x1, y1 = z2 * x0 - z0 * x2, y2 = z0 * x1 - z1 * x0;
         this.elements.set([
-            x.x, y.x, z.x, 0,
-            x.y, y.y, z.y, 0,
-            x.z, y.z, z.z, 0,
-            0, 0, 0, 1
+            x0, y0, z0, 0,
+            x1, y1, z1, 0,
+            x2, y2, z2, 0,
+            -(x0 * eye.x + x1 * eye.y + x2 * eye.z),
+            -(y0 * eye.x + y1 * eye.y + y2 * eye.z),
+            -(z0 * eye.x + z1 * eye.y + z2 * eye.z),
+            1
         ]);
-
-        let translation = new Matrix4().makeTranslation(-eye.x, -eye.y, -eye.z);
-        return this.multiply(translation);
+        return this;
     }
 }
-// Add copy to Vector3
-Vector3.prototype.copy = function(v) {
-    this.x = v.x;
-    this.y = v.y;
-    this.z = v.z;
-    return this;
+const VS_SOURCE = `
+attribute vec4 aVertexPosition;
+attribute vec3 aVertexNormal;
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+uniform mat4 uNormalMatrix;
+varying vec3 vNormal;
+varying vec3 vPosition;
+void main() {
+    vec4 pos = uModelViewMatrix * aVertexPosition;
+    vPosition = pos.xyz;
+    gl_Position = uProjectionMatrix * pos;
+    vNormal = mat3(uNormalMatrix) * aVertexNormal;
 }
-
-// WebGL Pipeline
-
-let gl;
-let program;
-let positionBuffer;
-let normalBuffer;
-let colorBuffer;
-let indexBuffer;
-
-const vsSource = `
-    attribute vec4 aVertexPosition;
-    attribute vec3 aVertexNormal;
-
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
-    uniform mat4 uNormalMatrix;
-    uniform vec4 uColor;
-
-    varying highp vec3 vLighting;
-    varying lowp vec4 vColor;
-    varying highp vec4 vWorldPos; // Expose world pos for checkerboard
-
-    void main(void) {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-        vColor = uColor;
-        vWorldPos = aVertexPosition; // We'll pass the scaled vertex pos for the ground
-
-        // Apply lighting effect
-        highp vec3 ambientLight = vec3(0.3, 0.3, 0.3);
-        highp vec3 directionalLightColor = vec3(1, 1, 1);
-        highp vec3 directionalVector = normalize(vec3(0.85, 0.8, 0.75));
-
-        highp vec4 transformedNormal = uNormalMatrix * vec4(aVertexNormal, 0.0);
-        highp float directional = max(dot(transformedNormal.xyz, directionalVector), 0.0);
-        vLighting = ambientLight + (directionalLightColor * directional);
-    }
 `;
 
-const fsSource = `
-    varying highp vec3 vLighting;
-    varying lowp vec4 vColor;
-    varying highp vec4 vWorldPos;
+const FS_SOURCE = `
+precision mediump float;
+varying vec3 vNormal;
+varying vec3 vPosition;
+uniform vec4 uColor;
+uniform int uIsGround;
 
-    uniform bool uIsGround;
+void main() {
+    vec3 normal = normalize(vNormal);
+    vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+    float diff = max(dot(normal, lightDir), 0.2);
 
-    void main(void) {
-        highp vec4 baseColor = vColor;
+    vec4 finalColor = uColor;
 
-        // Procedural Grid/Checkerboard for the ground plane to show scale/speed
-        if (uIsGround) {
-            // Scale world position for the grid size
-            highp vec2 grid = floor(vWorldPos.xz * 1.0); // 1 unit grid blocks
-            highp float checker = mod(grid.x + grid.y, 2.0);
-            if (checker == 0.0) {
-                baseColor.rgb *= 0.9; // Darken alternating squares slightly
-            }
+    if (uIsGround == 1) {
+        // Procedural grid
+        float gx = fract(vPosition.x * 0.5);
+        float gz = fract(vPosition.z * 0.5);
+        if (gx < 0.05 || gz < 0.05) {
+            finalColor.rgb *= 0.8;
         }
-
-        gl_FragColor = vec4(baseColor.rgb * vLighting, baseColor.a);
     }
+
+    gl_FragColor = vec4(finalColor.rgb * diff, finalColor.a);
+}
 `;
+
+let gl, program;
+let positionBuffer, normalBuffer, indexBuffer;
 
 function initWebGL() {
-    const canvas = document.getElementById('glcanvas');
-    gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    const canvas = document.getElementById("glcanvas");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl = canvas.getContext("webgl");
+    if (!gl) { alert("WebGL not supported"); return; }
 
-    if (!gl) {
-        alert('Unable to initialize WebGL. Your browser or machine may not support it.');
-        return;
-    }
+    gl.enable(gl.DEPTH_TEST);
+    gl.enable(gl.CULL_FACE);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
-    // Resize canvas
-    function resize() {
+    let vs = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vs, VS_SOURCE);
+    gl.compileShader(vs);
+
+    let fs = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fs, FS_SOURCE);
+    gl.compileShader(fs);
+
+    program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+
+    initBuffers();
+
+    window.addEventListener('resize', () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         gl.viewport(0, 0, canvas.width, canvas.height);
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    // Compile shaders
-    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-    // Create shader program
-    program = gl.createProgram();
-    gl.attachShader(program, vertexShader);
-    gl.attachShader(program, fragmentShader);
-    gl.linkProgram(program);
-
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-        alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
-        return null;
-    }
-
-    // Initialize Box Geometry Buffers
-    initBuffers(gl);
-
-    // Dynamic sky color is handled in clear during render loop, set default here
-    gl.clearColor(0.53, 0.81, 0.92, 1.0); // Sky blue
-    gl.clearDepth(1.0);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LEQUAL);
-
-    // Enable blending for transparent smoke
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    });
 }
 
-function loadShader(gl, type, source) {
-    const shader = gl.createShader(type);
-    gl.shaderSource(shader, source);
-    gl.compileShader(shader);
-
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
-        gl.deleteShader(shader);
-        return null;
-    }
-
-    return shader;
-}
-
-function initBuffers(gl) {
-    // Basic cube geometry (1x1x1) centered at origin
+function initBuffers() {
     const positions = [
-        // Front face
+        // Front
         -0.5, -0.5,  0.5,  0.5, -0.5,  0.5,  0.5,  0.5,  0.5, -0.5,  0.5,  0.5,
-        // Back face
+        // Back
         -0.5, -0.5, -0.5, -0.5,  0.5, -0.5,  0.5,  0.5, -0.5,  0.5, -0.5, -0.5,
-        // Top face
+        // Top
         -0.5,  0.5, -0.5, -0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5,  0.5, -0.5,
-        // Bottom face
+        // Bottom
         -0.5, -0.5, -0.5,  0.5, -0.5, -0.5,  0.5, -0.5,  0.5, -0.5, -0.5,  0.5,
-        // Right face
+        // Right
          0.5, -0.5, -0.5,  0.5,  0.5, -0.5,  0.5,  0.5,  0.5,  0.5, -0.5,  0.5,
-        // Left face
+        // Left
         -0.5, -0.5, -0.5, -0.5, -0.5,  0.5, -0.5,  0.5,  0.5, -0.5,  0.5, -0.5,
+    ];
+
+    const normals = [
+        // Front
+         0,  0,  1,  0,  0,  1,  0,  0,  1,  0,  0,  1,
+        // Back
+         0,  0, -1,  0,  0, -1,  0,  0, -1,  0,  0, -1,
+        // Top
+         0,  1,  0,  0,  1,  0,  0,  1,  0,  0,  1,  0,
+        // Bottom
+         0, -1,  0,  0, -1,  0,  0, -1,  0,  0, -1,  0,
+        // Right
+         1,  0,  0,  1,  0,  0,  1,  0,  0,  1,  0,  0,
+        // Left
+        -1,  0,  0, -1,  0,  0, -1,  0,  0, -1,  0,  0,
+    ];
+
+    const indices = [
+        0,  1,  2,      0,  2,  3,
+        4,  5,  6,      4,  6,  7,
+        8,  9,  10,     8,  10, 11,
+        12, 13, 14,     12, 14, 15,
+        16, 17, 18,     16, 18, 19,
+        20, 21, 22,     20, 22, 23,
     ];
 
     positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-    const normals = [
-        // Front
-         0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,
-        // Back
-         0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,
-        // Top
-         0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,
-        // Bottom
-         0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,
-        // Right
-         1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,  1.0,  0.0,  0.0,
-        // Left
-        -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0, -1.0,  0.0,  0.0,
-    ];
-
     normalBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
-
-    const indices = [
-        0,  1,  2,      0,  2,  3,    // front
-        4,  5,  6,      4,  6,  7,    // back
-        8,  9,  10,     8,  10, 11,   // top
-        12, 13, 14,     12, 14, 15,   // bottom
-        16, 17, 18,     16, 18, 19,   // right
-        20, 21, 22,     20, 22, 23,   // left
-    ];
 
     indexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 }
 
-
-// Scene Graph Node
 class Node {
     constructor(name) {
         this.name = name;
         this.position = new Vector3();
-        this.rotation = new Vector3(); // Euler angles (x,y,z)
+        this.rotation = new Vector3();
         this.scale = new Vector3(1, 1, 1);
-
-        this.localMatrix = new Matrix4();
-        this.worldMatrix = new Matrix4();
-
+        this.matrix = new Matrix4();
+        this.color = [1, 1, 1, 1];
         this.children = [];
-        this.parent = null;
-
-        this.color = [0.8, 0.8, 0.8, 1.0];
-        this.isDrawable = true;
+        this.velocity = new Vector3();
+        this.isSleeping = false;
+        this.life = 0;
+        this.isSmoke = false;
+        this.isBuilding = false;
+        this.isDestroyed = false;
+        this.health = 100;
+        this.carried = false;
     }
 
     add(child) {
         this.children.push(child);
-        child.parent = this;
     }
 
-    updateMatrix(parentWorldMatrix) {
-        // Compute local matrix
-        let transMat = new Matrix4().makeTranslation(this.position.x, this.position.y, this.position.z);
+    updateMatrix(parentMatrix) {
+        let m = new Matrix4();
+        m.multiply(new Matrix4().makeTranslation(this.position.x, this.position.y, this.position.z));
+        m.multiply(new Matrix4().makeRotationY(this.rotation.y));
+        m.multiply(new Matrix4().makeRotationX(this.rotation.x));
+        m.multiply(new Matrix4().makeRotationZ(this.rotation.z));
+        m.multiply(new Matrix4().makeScale(this.scale.x, this.scale.y, this.scale.z));
 
-        let rotXMat = new Matrix4().makeRotationX(this.rotation.x);
-        let rotYMat = new Matrix4().makeRotationY(this.rotation.y);
-        let rotZMat = new Matrix4().makeRotationZ(this.rotation.z);
-
-        let rotMat = new Matrix4().multiplyMatrices(rotYMat, rotXMat).multiply(rotZMat);
-
-        let scaleMat = new Matrix4().makeScale(this.scale.x, this.scale.y, this.scale.z);
-
-        this.localMatrix.identity().multiply(transMat).multiply(rotMat).multiply(scaleMat);
-
-        if (parentWorldMatrix) {
-            this.worldMatrix.multiplyMatrices(parentWorldMatrix, this.localMatrix);
+        if (parentMatrix) {
+            this.matrix.multiplyMatrices(parentMatrix, m);
         } else {
-            this.worldMatrix.copy(this.localMatrix);
+            this.matrix.copy(m);
         }
 
         for (let child of this.children) {
-            child.updateMatrix(this.worldMatrix);
+            child.updateMatrix(this.matrix);
         }
     }
 
     draw(gl, program, viewMatrix, projectionMatrix) {
-        if (this.isDrawable) {
-            // uModelViewMatrix = viewMatrix * worldMatrix
-            let modelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, this.worldMatrix);
+        let mv = new Matrix4().multiplyMatrices(viewMatrix, this.matrix);
+        let norm = new Matrix4().copy(mv);
 
-            // Calculate normal matrix (transpose of inverse of modelViewMatrix)
-            // For simple translation/rotation/uniform scale, modelViewMatrix is fine for normals if we just want basics
-            // Actually, we should extract rotation/scale for normals. For now, modelViewMatrix works for non-skewed.
-            let normalMatrix = new Matrix4().copy(modelViewMatrix);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, mv.elements);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, norm.elements);
+        gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), this.color);
+        gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0);
 
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, modelViewMatrix.elements);
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, normalMatrix.elements);
-            gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), this.color);
-            // Default uIsGround to false for nodes
-            gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-            gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+        gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+        gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
 
-            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-            gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
-
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-            gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
-        }
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+        gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
 
         for (let child of this.children) {
             child.draw(gl, program, viewMatrix, projectionMatrix);
         }
     }
+
+    getGlobalPosition(parentMatrix) {
+        let m = new Matrix4();
+        m.multiply(new Matrix4().makeTranslation(this.position.x, this.position.y, this.position.z));
+        let worldMatrix = new Matrix4();
+        if (parentMatrix) {
+            worldMatrix.multiplyMatrices(parentMatrix, m);
+        } else {
+            worldMatrix.copy(m);
+        }
+        return new Vector3(worldMatrix.elements[12], worldMatrix.elements[13], worldMatrix.elements[14]);
+    }
 }
 
-// Build D9
-let d9Root;
-let d9BladeArms;
-let d9Blade;
-let d9Exhaust;
-let d9Ripper;
-
-let d9TreadsLeft = [];
-let d9TreadsRight = [];
+// Variables
+let d9Root, chassisNode, bladeArms, bladeNode, ripperNode, ripperPivot;
 let treadOffset = 0;
 
-// Helper to define the triangular perimeter
-const trackLength = 2.8;
-const trackHeight = 1.5;
-const sprocketY = 0.5; // Top wheel
-const wheelR = 0.3;
-
-function buildTreads(parentNode, color) {
-    // Top elevated drive sprocket
-    let topWheel = new Node("TopWheel");
-    topWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    topWheel.position.set(0, sprocketY, -trackLength / 2 + 0.5);
-    topWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(topWheel);
-
-    // Front bottom idler
-    let frontWheel = new Node("FrontWheel");
-    frontWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    frontWheel.position.set(0, -trackHeight / 2 + wheelR, trackLength / 2);
-    frontWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(frontWheel);
-
-    // Rear bottom idler
-    let rearWheel = new Node("RearWheel");
-    rearWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    rearWheel.position.set(0, -trackHeight / 2 + wheelR, -trackLength / 2);
-    rearWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(rearWheel);
-
-    // Inner small rollers along the bottom
-    for(let w = 1; w < 4; w++) {
-        let roller = new Node("Roller" + w);
-        roller.scale.set(0.65, 0.3, 0.3);
-        let zPos = -trackLength/2 + (trackLength / 4) * w;
-        roller.position.set(0, -trackHeight / 2 + 0.15, zPos);
-        roller.color = [0.2, 0.2, 0.2, 1.0];
-        parentNode.add(roller);
-    }
-
-    // Create individual treads
-    let treadsArray = (parentNode.name === "TrackLeft") ? d9TreadsLeft : d9TreadsRight;
-    const numTreads = 30; // More treads for triangular shape
-    for (let i = 0; i < numTreads; i++) {
-        let tread = new Node("Tread" + i);
-        tread.scale.set(0.8, 0.1, 0.25);
-        tread.color = [0.05, 0.05, 0.05, 1.0];
-        parentNode.add(tread);
-        treadsArray.push(tread);
-    }
-}
-
-function updateTreadPositions(treadsArray, offset) {
-    // Define the three points of the triangle (centers of the main wheels)
-    let pTop = new Vector3(0, sprocketY, -trackLength / 2 + 0.5);
-    let pFront = new Vector3(0, -trackHeight / 2 + wheelR, trackLength / 2);
-    let pRear = new Vector3(0, -trackHeight / 2 + wheelR, -trackLength / 2);
-
-    // Calculate segment lengths
-    let lenTopFront = Math.hypot(pFront.z - pTop.z, pFront.y - pTop.y);
-    let lenFrontRear = trackLength;
-    let lenRearTop = Math.hypot(pTop.z - pRear.z, pTop.y - pRear.y);
-
-    // Total perimeter length (approximate without curved corners for simplicity)
-    let totalLength = lenTopFront + lenFrontRear + lenRearTop;
-    const numTreads = treadsArray.length;
-
-    for (let i = 0; i < numTreads; i++) {
-        let p = ((i / numTreads) * totalLength + offset) % totalLength;
-        if (p < 0) p += totalLength;
-
-        let tread = treadsArray[i];
-
-        if (p < lenTopFront) {
-            // Top to Front
-            let t = p / lenTopFront;
-            tread.position.set(0, pTop.y + (pFront.y - pTop.y) * t, pTop.z + (pFront.z - pTop.z) * t);
-            tread.rotation.x = Math.atan2(pTop.y - pFront.y, pTop.z - pFront.z);
-            // offset normal outwards
-            tread.position.y += Math.cos(tread.rotation.x) * wheelR;
-            tread.position.z -= Math.sin(tread.rotation.x) * wheelR;
-        } else if (p < lenTopFront + lenFrontRear) {
-            // Front to Rear (Bottom)
-            let t = (p - lenTopFront) / lenFrontRear;
-            tread.position.set(0, pFront.y, pFront.z - lenFrontRear * t);
-            tread.rotation.x = Math.PI;
-            tread.position.y -= wheelR;
-        } else {
-            // Rear to Top
-            let t = (p - (lenTopFront + lenFrontRear)) / lenRearTop;
-            tread.position.set(0, pRear.y + (pTop.y - pRear.y) * t, pRear.z + (pTop.z - pRear.z) * t);
-            tread.rotation.x = Math.atan2(pRear.y - pTop.y, pRear.z - pTop.z);
-            tread.position.y -= Math.cos(tread.rotation.x) * wheelR;
-            tread.position.z += Math.sin(tread.rotation.x) * wheelR;
-        }
-    }
-}
-
 function buildD9() {
-    // Colors
-    const yellow = [0.95, 0.76, 0.05, 1.0];
-    const darkGray = [0.2, 0.2, 0.2, 1.0];
-    const black = [0.1, 0.1, 0.1, 1.0];
+    d9Root = new Node("D9_Root");
 
-    // Root: Chassis
-    d9Root = new Node("Chassis");
-    d9Root.scale.set(2, 1.5, 3.5); // Width, Height, Length
-    d9Root.position.set(0, 1, 0);
-    d9Root.color = yellow;
+    // Chassis
+    chassisNode = new Node("Chassis");
+    chassisNode.scale.set(2.5, 1.5, 4.0);
+    chassisNode.color = [0.95, 0.8, 0.1, 1.0];
+    chassisNode.position.set(0, 1.0, 0);
+    d9Root.add(chassisNode);
 
-    // Child 1: Tracks
-    let trackLeft = new Node("TrackLeft");
-    trackLeft.position.set(-1.4, -0.2, 0); // Local to chassis
-    d9Root.add(trackLeft);
-
-    let trackRight = new Node("TrackRight");
-    trackRight.position.set(1.4, -0.2, 0);
-    d9Root.add(trackRight);
-
-    buildTreads(trackLeft, black);
-    buildTreads(trackRight, black);
-
-    // Child 2: Cab/Engine
+    // Cab
     let cab = new Node("Cab");
-    cab.scale.set(1.5, 1.5, 1.5);
-    cab.position.set(0, 1.5, -0.5); // Towards the back
-    cab.color = yellow;
-    d9Root.add(cab);
+    cab.scale.set(1.5, 1.2, 1.5);
+    cab.position.set(0, 1.35, -0.5);
+    cab.color = [0.2, 0.2, 0.2, 1.0];
+    chassisNode.add(cab);
 
-    let engine = new Node("Engine");
-    engine.scale.set(1.2, 1.0, 1.8);
-    engine.position.set(0, 1.2, 1.2); // Towards the front
-    engine.color = yellow;
-    d9Root.add(engine);
+    // Exhaust Pipe
+    let pipe = new Node("Exhaust");
+    pipe.scale.set(0.2, 1.5, 0.2);
+    pipe.position.set(0.6, 1.0, 1.0);
+    pipe.color = [0.1, 0.1, 0.1, 1.0];
+    chassisNode.add(pipe);
 
-    d9Exhaust = new Node("Exhaust");
-    d9Exhaust.scale.set(0.15, 1.0, 0.15);
-    d9Exhaust.position.set(0.4, 2.0, 1.5);
-    d9Exhaust.color = darkGray;
-    d9Root.add(d9Exhaust);
+    // Treads
+    let treadL = new Node("TreadL");
+    treadL.scale.set(0.8, 1.2, 4.5);
+    treadL.position.set(-1.6, -0.2, 0);
+    treadL.color = [0.15, 0.15, 0.15, 1.0];
+    chassisNode.add(treadL);
 
-    // Child 3: Blade Arms
-    d9BladeArms = new Node("BladeArms");
-    // Pivot point near the middle of chassis
-    d9BladeArms.position.set(0, 0, 0);
-    d9BladeArms.isDrawable = false; // Just a pivot group
-    d9Root.add(d9BladeArms);
+    let treadR = new Node("TreadR");
+    treadR.scale.set(0.8, 1.2, 4.5);
+    treadR.position.set(1.6, -0.2, 0);
+    treadR.color = [0.15, 0.15, 0.15, 1.0];
+    chassisNode.add(treadR);
 
-    let armLeft = new Node("ArmLeft");
-    armLeft.scale.set(0.2, 0.2, 3.5);
-    armLeft.position.set(-1.1, 0, 1.5); // Extend forward
-    armLeft.color = yellow;
-    d9BladeArms.add(armLeft);
+    // Blade Arms (Pivot at center of chassis)
+    bladeArms = new Node("BladeArms");
+    bladeArms.position.set(0, 0.5, 0);
+    d9Root.add(bladeArms);
 
-    let armRight = new Node("ArmRight");
-    armRight.scale.set(0.2, 0.2, 3.5);
-    armRight.position.set(1.1, 0, 1.5);
-    armRight.color = yellow;
-    d9BladeArms.add(armRight);
+    // Arm Beams
+    let armL = new Node("ArmL");
+    armL.scale.set(0.2, 0.4, 3.0);
+    armL.position.set(-1.8, 0, 1.5);
+    armL.color = [0.8, 0.6, 0.1, 1.0];
+    bladeArms.add(armL);
 
-    // Child 4: Blade
-    d9Blade = new Node("Blade");
-    // Attach to the end of the arms
-    d9Blade.position.set(0, 0, 3.2);
-    d9Blade.isDrawable = false; // Group for blade parts
-    d9BladeArms.add(d9Blade);
+    let armR = new Node("ArmR");
+    armR.scale.set(0.2, 0.4, 3.0);
+    armR.position.set(1.8, 0, 1.5);
+    armR.color = [0.8, 0.6, 0.1, 1.0];
+    bladeArms.add(armR);
 
-    let bladeCenter = new Node("BladeCenter");
-    bladeCenter.scale.set(3.5, 1.5, 0.2);
-    bladeCenter.position.set(0, 0, 0);
-    bladeCenter.color = darkGray;
-    d9Blade.add(bladeCenter);
+    // Blade Pivot (Front of arms)
+    let bladePivot = new Node("BladePivot");
+    bladePivot.position.set(0, 0, 3.0);
+    bladeArms.add(bladePivot);
 
-    let bladeTop = new Node("BladeTop");
-    bladeTop.scale.set(3.5, 0.4, 0.2);
-    bladeTop.position.set(0, 0.8, -0.1);
-    bladeTop.rotation.x = -0.3; // Curve forward slightly
-    bladeTop.color = darkGray;
-    d9Blade.add(bladeTop);
+    // Blade Center
+    bladeNode = new Node("BladeCenter");
+    bladeNode.scale.set(3.8, 1.5, 0.3);
+    bladeNode.position.set(0, 0.2, 0);
+    bladeNode.rotation.x = -Math.PI / 8; // Slightly curved back
+    bladeNode.color = [0.7, 0.7, 0.7, 1.0];
+    bladePivot.add(bladeNode);
 
-    let bladeBottom = new Node("BladeBottom");
-    bladeBottom.scale.set(3.5, 0.4, 0.2);
-    bladeBottom.position.set(0, -0.8, -0.1);
-    bladeBottom.rotation.x = 0.3; // Curve backward slightly
-    bladeBottom.color = darkGray;
-    d9Blade.add(bladeBottom);
+    // Blade Edges (Curve forward slightly)
+    let bladeEdgeL = new Node("BladeL");
+    bladeEdgeL.scale.set(0.5, 1.5, 0.4);
+    bladeEdgeL.position.set(-1.9, 0, 0.1);
+    bladeEdgeL.rotation.y = -Math.PI / 16;
+    bladeEdgeL.color = [0.7, 0.7, 0.7, 1.0];
+    bladeNode.add(bladeEdgeL);
 
-    // Child 5: Rear Ripper Shank
-    d9Ripper = new Node("Ripper");
-    d9Ripper.position.set(0, 0, -1.8); // Back of chassis
-    d9Root.add(d9Ripper);
+    let bladeEdgeR = new Node("BladeR");
+    bladeEdgeR.scale.set(0.5, 1.5, 0.4);
+    bladeEdgeR.position.set(1.9, 0, 0.1);
+    bladeEdgeR.rotation.y = Math.PI / 16;
+    bladeEdgeR.color = [0.7, 0.7, 0.7, 1.0];
+    bladeNode.add(bladeEdgeR);
 
-    let ripperArm = new Node("RipperArm");
-    ripperArm.scale.set(0.6, 0.4, 1.2);
-    ripperArm.position.set(0, 0, -0.6);
-    ripperArm.color = yellow;
-    d9Ripper.add(ripperArm);
+    // Rear Ripper Shank Assembly
+    ripperPivot = new Node("RipperPivot");
+    ripperPivot.position.set(0, 0.5, -2.0); // Back of chassis
+    ripperPivot.rotation.x = Math.PI / 8; // Default raised position
+    d9Root.add(ripperPivot);
 
-    let ripperShank = new Node("RipperShank");
-    ripperShank.scale.set(0.2, 1.5, 0.4);
-    ripperShank.position.set(0, -0.8, -1.0);
-    ripperShank.rotation.x = 0.2; // Pointed down and forward
-    ripperShank.color = darkGray;
-    d9Ripper.add(ripperShank);
+    // Shank arm extending back and down
+    let shankArm = new Node("ShankArm");
+    shankArm.scale.set(0.3, 0.3, 1.5);
+    shankArm.position.set(0, 0, -0.75);
+    shankArm.color = [0.8, 0.6, 0.1, 1.0];
+    shankArm.rotation.x = Math.PI / 4;
+    ripperPivot.add(shankArm);
+
+    // The actual ripper claw digging in
+    ripperNode = new Node("RipperClaw");
+    ripperNode.scale.set(0.2, 1.0, 0.2);
+    ripperNode.position.set(0, -0.5, -0.5);
+    ripperNode.color = [0.4, 0.4, 0.4, 1.0];
+    ripperNode.rotation.x = -Math.PI / 6;
+    shankArm.add(ripperNode);
+
+    d9Root.position.set(0, 1.0, 0);
 }
 
-
-// Control Scheme & Kinematics
 const keys = {};
-
-window.addEventListener('keydown', (e) => {
-    keys[e.key] = true;
-
-    // Check for single-press keys
-    if (e.key === 'g' || e.key === 'G') {
-        const garage = document.getElementById('garageMenu');
-        if (garage.style.display === 'none') {
-            openGarage();
-        } else {
-            closeGarage();
-        }
-    }
-});
-
-window.addEventListener('keyup', (e) => {
-    keys[e.key] = false;
-});
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
 
 let d9Velocity = 0;
+let d9VelocityY = 0;
 let d9AngularVelocity = 0;
-let d9VelocityY = 0; // vertical velocity for jumping
+const CHAIN_LENGTH = 15.0;
+let chainedVehicle = null;
 
-// Dashboard logic
-let engineHeat = 0; // 0 to 100
-let engineFuel = 100; // 0 to 100
+let engineFuel = 100;
+let maxFuel = 100;
+let engineHeat = 0;
+let enginePower = 1.0;
+let baseMoveSpeed = 10.0;
+let bladeDragReduction = 0;
 let isEngineDead = false;
 
-function updateDashboard(speed, rpm, psi) {
-    let heatEl = document.getElementById('gaugeHeat');
-    let fuelEl = document.getElementById('gaugeFuel');
-    let speedEl = document.getElementById('gaugeSpeed');
-    let rpmEl = document.getElementById('gaugeRPM');
-    let psiEl = document.getElementById('gaugePSI');
-
-    // Normalize logic for gauges
-    let speedPct = Math.min(100, Math.abs(speed) / 15.0 * 100);
-    let rpmPct = Math.min(100, rpm);
-    let psiPct = Math.min(100, psi);
-
-    speedEl.style.width = speedPct + '%';
-    rpmEl.style.width = rpmPct + '%';
-    psiEl.style.width = psiPct + '%';
-    heatEl.style.width = engineHeat + '%';
-    fuelEl.style.width = engineFuel + '%';
-
-    // Red Zones logic
-    rpmEl.style.backgroundColor = rpmPct > 85 ? 'red' : '#2196F3';
-    heatEl.style.backgroundColor = engineHeat > 85 ? 'red' : '#FF9800';
-    psiEl.style.backgroundColor = psiPct > 85 ? 'red' : '#00BCD4';
-    fuelEl.style.backgroundColor = engineFuel < 15 ? 'red' : '#9C27B0';
+// Helpers
+function buildFuelTruck() {
+    let root = new Node("Oshkosh");
+    let cab = new Node("TruckCab");
+    cab.scale.set(2.2, 1.8, 2.5);
+    cab.position.set(0, 0, 2);
+    cab.color = [0.8, 0.7, 0.2, 1.0];
+    root.add(cab);
+    let tank = new Node("FuelTank");
+    tank.scale.set(2.0, 2.0, 5.0);
+    tank.position.set(0, 0, -2);
+    tank.color = [0.7, 0.6, 0.2, 1.0];
+    root.add(tank);
+    for(let i=0; i<3; i++) {
+        let zPos = 2.5 - i * 2.5;
+        let wL = new Node("WheelL"); wL.scale.set(0.5, 1.0, 1.0); wL.position.set(-1.3, -0.6, zPos); wL.color = [0.1, 0.1, 0.1, 1.0]; root.add(wL);
+        let wR = new Node("WheelR"); wR.scale.set(0.5, 1.0, 1.0); wR.position.set(1.3, -0.6, zPos); wR.color = [0.1, 0.1, 0.1, 1.0]; root.add(wR);
+    }
+    return root;
 }
 
-function updateKinematics(dt) {
-    if (!d9Root) return;
+function buildTank() {
+    let t = new Node("Tank");
+    let body = new Node("TankBody");
+    body.scale.set(3, 1.2, 5);
+    body.color = [0.3, 0.4, 0.2, 1.0];
+    t.add(body);
+    let turret = new Node("TankTurret");
+    turret.scale.set(2, 1, 2.5);
+    turret.position.set(0, 1.1, -0.5);
+    turret.color = [0.25, 0.35, 0.15, 1.0];
+    t.add(turret);
+    let barrel = new Node("TankBarrel");
+    barrel.scale.set(0.4, 0.4, 3.5);
+    barrel.position.set(0, 1.4, 1.5);
+    barrel.color = [0.2, 0.3, 0.1, 1.0];
+    t.add(barrel);
 
-    const baseMoveSpeed = 15.0; // Much faster base speed for fun gameplay
-    const maxTurnSpeed = 1.5;
-    const turnAccel = 5.0;
-    const bladeSpeed = 2.0 * dt;
+    let muzzleFlash = new Node("MuzzleFlash");
+    muzzleFlash.scale.set(1.5, 1.5, 1.5);
+    muzzleFlash.position.set(0, 1.4, 3.5);
+    muzzleFlash.color = [1.0, 0.5, 0.0, 0.0]; // invisible by default
+    t.add(muzzleFlash);
+    t.muzzleFlashNode = muzzleFlash;
+    t.lastFire = 0;
+    return t;
+}
 
-    let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
-    let chassisAABB = new Vector3(2.8, 1.5, 4.5);
-    let dirtDrag = 0;
-    let bladePushCount = 0;
+function buildSoldier(isEnemy=true, x=0, z=0) {
+    let sRoot = new Node(isEnemy ? "EnemyRoot" : "AllyRoot");
+    sRoot.position.set(x, 1.0, z);
+    let body = new Node("Body");
+    body.scale.set(0.8, 1.2, 0.8);
+    body.color = isEnemy ? [0.8, 0.0, 0.0, 1.0] : [0.0, 0.0, 0.8, 1.0];
+    sRoot.add(body);
+    let head = new Node("Head");
+    head.scale.set(0.5, 0.5, 0.5);
+    head.position.set(0, 0.8, 0);
+    head.color = isEnemy ? [0.8, 0.0, 0.0, 1.0] : [0.0, 0.0, 0.8, 1.0];
+    sRoot.add(head);
+    sRoot.isEnemy = isEnemy;
+    sRoot.isDead = false;
+    return sRoot;
+}
 
-    d9Blade.updateMatrix(d9BladeArms.worldMatrix);
-    let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
-    let bladeSize = new Vector3(3.5, 1.5, 1.5);
+function updateControls(dt) {
+    if (gameState !== "PLAYING" || isEngineDead) return;
 
-    for (let dirt of dirtBoxes) {
-        let size = dirt.scale;
-        if (checkAABBCollision(dirt.position, size, chassisWorldPos, chassisAABB)) dirtDrag += 1;
-        if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) bladePushCount += 1;
-    }
+    let moveForce = 0;
+    let turnForce = 0;
 
-    // Lower resistance for more arcade-like pushing feel
-    let pushResistance = Math.min(0.6, bladePushCount * 0.015);
-    let dragFactor = Math.min(0.5, dirtDrag * 0.02);
+    // Up/Down Arrows: Translate along local Z
+    if (keys['ArrowUp']) moveForce = (baseMoveSpeed * enginePower) * dt;
+    if (keys['ArrowDown']) moveForce = -(baseMoveSpeed * enginePower * 0.5) * dt; // slower reverse
 
-    let combinedResistance = Math.min(0.7, dragFactor + pushResistance);
-    let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
+    // Left/Right Arrows: Skid steer rotation around local Y
+    if (keys['ArrowLeft']) turnForce = 2.0 * dt;
+    if (keys['ArrowRight']) turnForce = -2.0 * dt;
 
-    let targetVelocity = 0;
-    if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
-    if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
+    d9Velocity += (moveForce - d9Velocity) * 5 * dt;
+    d9AngularVelocity += (turnForce - d9AngularVelocity) * 10 * dt;
 
-    // Disable movement if engine is dead
-    if (isEngineDead) targetVelocity = 0;
+    d9Root.position.x += Math.sin(d9Root.rotation.y) * d9Velocity;
+    d9Root.position.z += Math.cos(d9Root.rotation.y) * d9Velocity;
+    d9Root.rotation.y += d9AngularVelocity;
 
-    // Faster acceleration
-    let accel = 10.0 * dt;
-    if (d9Velocity < targetVelocity) {
-        d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
-    } else if (d9Velocity > targetVelocity) {
-        d9Velocity = Math.max(d9Velocity - accel, targetVelocity);
-    }
-
-    // Gauge Logic Computations
-    let rpmBase = (Math.abs(d9Velocity) / baseMoveSpeed) * 60.0;
-    // Add RPM spike when pushing heavy objects
-    let rpmLoad = (combinedResistance * 100.0) * (keys['ArrowUp'] || keys['ArrowDown'] ? 1 : 0);
-    let currentRPM = rpmBase + rpmLoad;
-    let currentPSI = bladePushCount * 3.0; // scale PSI to blade load
-
-    // Calculate Heat & Fuel
-    if (!isEngineDead) {
-        // High RPM generates heat
-        if (currentRPM > 80) engineHeat += (currentRPM - 80) * 0.1 * dt;
-        else engineHeat -= 15.0 * dt; // Cooling
-
-        // Consuming Fuel
-        engineFuel -= (1.0 + currentRPM * 0.02) * dt;
-
-        engineHeat = Math.max(0, Math.min(100, engineHeat));
-        engineFuel = Math.max(0, Math.min(100, engineFuel));
-
-        if (engineHeat >= 100 || engineFuel <= 0) {
-            isEngineDead = true;
-        }
-    }
-
-    updateDashboard(d9Velocity, currentRPM, currentPSI);
-
-    // Left/Right: Rotation Y (with momentum)
-    let targetTurn = 0;
-    if (keys['ArrowLeft']) {
-        targetTurn = maxTurnSpeed;
-    } else if (keys['ArrowRight']) {
-        targetTurn = -maxTurnSpeed;
-    }
-
-    // Slightly smoother turn acceleration
-    if (d9AngularVelocity < targetTurn) {
-        d9AngularVelocity = Math.min(d9AngularVelocity + turnAccel * dt, targetTurn);
-    } else if (d9AngularVelocity > targetTurn) {
-        d9AngularVelocity = Math.max(d9AngularVelocity - turnAccel * dt, targetTurn);
-    }
-
-    d9Root.rotation.y += d9AngularVelocity * dt;
-
-    // Up/Down: Translate forward/backward along local Z
-    let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y));
-
-    if (Math.abs(d9Velocity) > 0.01) {
-        d9Root.position.add(new Vector3().copy(forward).multiplyScalar(d9Velocity * dt));
-    }
-
-    // Jump / Terrain matching physics + Vibrations from rubble
-    let wheelBase = 4.5;
-    let frontTrackZ = d9Root.position.z + forward.z * (wheelBase / 2);
-    let frontTrackX = d9Root.position.x + forward.x * (wheelBase / 2);
-    let backTrackZ = d9Root.position.z - forward.z * (wheelBase / 2);
-    let backTrackX = d9Root.position.x - forward.x * (wheelBase / 2);
-
-    // Add high-frequency noise/shake if driving over rubble
-    let shakeOffset = 0;
-    let pitchShake = 0;
-    if (dirtDrag > 0 && Math.abs(d9Velocity) > 0.5) {
-        shakeOffset = (Math.random() - 0.5) * 0.1; // +/- 0.05 units Y
-        pitchShake = (Math.random() - 0.5) * 0.05; // +/- 0.025 rad pitch
-    }
-
-    let heightFront = getTerrainHeight(frontTrackX, frontTrackZ);
-    let heightBack = getTerrainHeight(backTrackX, backTrackZ);
-
-    // Desired base height (average of front and back tracks)
-    let targetY = (heightFront + heightBack) / 2 + 1; // +1 for chassis center offset from ground
-    // Negate the pitch difference because our rotation X is inverted visually
-    let targetPitch = -Math.atan2(heightFront - heightBack, wheelBase);
-
-    // Calculate lateral height differences for Roll (Side flip)
-    let trackWidth = 4.0;
-    // Left Track Pos
-    let leftTrackX = d9Root.position.x - Math.cos(d9Root.rotation.y) * (trackWidth / 2);
-    let leftTrackZ = d9Root.position.z + Math.sin(d9Root.rotation.y) * (trackWidth / 2);
-    // Right Track Pos
-    let rightTrackX = d9Root.position.x + Math.cos(d9Root.rotation.y) * (trackWidth / 2);
-    let rightTrackZ = d9Root.position.z - Math.sin(d9Root.rotation.y) * (trackWidth / 2);
-
-    let heightLeft = getTerrainHeight(leftTrackX, leftTrackZ);
-    let heightRight = getTerrainHeight(rightTrackX, rightTrackZ);
-
-    // Negative roll because positive Z rotation raises the right side
-    let targetRoll = -Math.atan2(heightLeft - heightRight, trackWidth);
-
-    // Apply Gravity to D9 Vertical velocity
-    d9VelocityY -= 15.0 * dt;
-    d9Root.position.y += d9VelocityY * dt;
-
-    if (d9Root.position.y <= targetY + 0.1) {
-        // We hit the ground, interpolate position instead of snapping to prevent jitter
-        d9Root.position.y += (targetY - d9Root.position.y) * 10 * dt + shakeOffset;
-        if (d9Root.position.y < targetY) d9Root.position.y = targetY + shakeOffset;
-        d9VelocityY = 0; // stop falling
-
-        // Match pitch to terrain only if grounded
-        // Positive velocity diff means accelerating forward (lean backward slightly)
-        let accelLean = (targetVelocity - d9Velocity) * 0.01;
-        // Interpolate pitch to target
-        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt; // Smoother pitch interpolation
-        d9Root.rotation.x += accelLean + pitchShake; // add weak accel lean and shake
-
-        // Interpolate roll to target
-        d9Root.rotation.z += (targetRoll - d9Root.rotation.z) * 5 * dt;
-    } else {
-        // Airborne! Maintain current pitch (or slowly level out)
-        d9Root.rotation.x *= 0.99;
-        d9Root.rotation.z *= 0.99;
-    }
-
-    // Clamp pitch and roll limits to avoid violent flipping on small debris hits
-    d9Root.rotation.x = Math.max(-0.6, Math.min(0.6, d9Root.rotation.x));
-    d9Root.rotation.z = Math.max(-0.6, Math.min(0.6, d9Root.rotation.z));
-
-    // Ground penetration check for blade (See-Saw effect)
-    if (d9Blade) {
-        d9Root.updateMatrix(null); // Ensure matrices are ready
-        let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
-        let bladeTerrainY = getTerrainHeight(bladeWorldPos.x, bladeWorldPos.z);
-        // If the blade bottom (approx -0.5 local Y offset) hits the ground, lift the chassis
-        let bladeBottomY = bladeWorldPos.y - 0.5;
-        if (bladeBottomY < bladeTerrainY) {
-            let penetration = bladeTerrainY - bladeBottomY;
-            // Only lift slightly to prevent glitching through
-            d9Root.position.y += penetration * 0.2;
-            // Also pitch back a bit to simulate see-saw
-            d9Root.rotation.x -= penetration * 0.1;
-            // Stop falling if we hit via blade
-            if (d9VelocityY < 0) d9VelocityY = 0;
-
-        }
-    }
-
-    // Chassis Collision to prevent going *through* the ramp sideways
-    chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
-    // Smart trick for ramp collision: instead of just checking center, check front/back bounds
-    let centerTerrainY = getTerrainHeight(chassisWorldPos.x, chassisWorldPos.z);
-    let chassisBottom = centerTerrainY + 1.0; // Keep the whole base above terrain
-
-    // Smoothly lift the chassis up if it dips below the terrain level
-    if (d9Root.position.y < chassisBottom) {
-        // Fast upward interpolation to avoid jittering when snapping
-        d9Root.position.y += (chassisBottom - d9Root.position.y) * 15 * dt;
-        if (d9VelocityY < 0) d9VelocityY = 0;
-    }
-
-    // < / > : Raise/Lower Blade (Rotation X on BladeArms)
+    // < / > : Raise/Lower Blade
     if (keys[','] || keys['<']) {
-        d9BladeArms.rotation.x -= bladeSpeed;
+        bladeArms.rotation.x -= 1.0 * dt; // Tip up
+        if (bladeArms.rotation.x < -Math.PI / 6) bladeArms.rotation.x = -Math.PI / 6;
     }
     if (keys['.'] || keys['>']) {
-        d9BladeArms.rotation.x += bladeSpeed;
+        bladeArms.rotation.x += 1.0 * dt; // Tip down
+        if (bladeArms.rotation.x > Math.PI / 8) bladeArms.rotation.x = Math.PI / 8;
     }
 
-    // ; / ' : Raise/Lower Ripper (Rotation X on d9Ripper)
+    // ; / ' : Raise/Lower Ripper Shank
     if (keys[';'] || keys[':']) {
-        d9Ripper.rotation.x -= bladeSpeed;
+        ripperPivot.rotation.x -= 2.0 * dt;
+        if (ripperPivot.rotation.x < -Math.PI / 4) ripperPivot.rotation.x = -Math.PI / 4;
     }
-    if (keys['\''] || keys['"']) {
-        d9Ripper.rotation.x += bladeSpeed;
+    if (keys["'"] || keys['"']) {
+        ripperPivot.rotation.x += 2.0 * dt;
+        if (ripperPivot.rotation.x > Math.PI / 4) ripperPivot.rotation.x = Math.PI / 4;
     }
 
-    // Clamp blade and ripper rotation to realistic limits
-    d9BladeArms.rotation.x = Math.max(-0.4, Math.min(0.2, d9BladeArms.rotation.x));
-    d9Ripper.rotation.x = Math.max(-0.5, Math.min(0.3, d9Ripper.rotation.x));
-
-    // [ / ] : Camera Pitch (0 to 90 degrees)
-    const pitchSpeed = 1.0 * dt;
-    if (keys['[']) {
-        cameraPitch -= pitchSpeed;
+    // G: Garage
+    if (keys['g'] || keys['G']) {
+        openGarage();
+        keys['g'] = false;
+        keys['G'] = false;
     }
-    if (keys[']']) {
-        cameraPitch += pitchSpeed;
-    }
-    cameraPitch = Math.max(0, Math.min(Math.PI / 2 - 0.01, cameraPitch)); // Clamp 0 to ~90 deg
 
-    // Key 'f' - Spawn Fuel Truck
+    // F: Refuel Truck
     if (keys['f'] || keys['F']) {
-        if (!gameFuelTruck) {
+        if (!gameFuelTruck && gameState === "PLAYING") {
             gameFuelTruck = buildFuelTruck();
-            // Start it somewhat near but behind the D9
-            gameFuelTruck.position.set(d9Root.position.x - 10, d9Root.position.y, d9Root.position.z - 20);
+            gameFuelTruck.position.set(d9Root.position.x - 10, d9Root.position.y, d9Root.position.z - 30);
         }
-        keys['f'] = false; // debounce
-        keys['F'] = false;
+        keys['f'] = false;
     }
 
-    // Key 'c' - Chain / Unchain nearest vehicle
+    // C: Rope Towing to Shank
     if (keys['c'] || keys['C']) {
-        keys['c'] = false; // debounce
-        keys['C'] = false;
-
         if (chainedVehicle) {
-            chainedVehicle = null; // Unchain
+            chainedVehicle = null;
         } else {
-            // Find closest vehicle
             let vehicles = [gameTank, gameAPC, gameFuelTruck].filter(v => v !== null);
             let closest = null;
             let minDist = CHAIN_LENGTH * CHAIN_LENGTH;
+            d9Root.updateMatrix(null);
+            let shankPos = ripperNode.getGlobalPosition(d9Root.matrix);
             for (let v of vehicles) {
-                let distSq = d9Root.position.distanceToSquared(v.position);
+                let distSq = new Vector3().copy(v.position).sub(shankPos).lengthSq();
                 if (distSq < minDist) {
                     minDist = distSq;
                     closest = v;
                 }
             }
-            if (closest) {
-                chainedVehicle = closest;
-            }
+            if (closest) chainedVehicle = closest;
         }
+        keys['c'] = false;
+        keys['C'] = false;
     }
 
-    // Chain Towing Logic & Fuel Truck Refueling
-    if (gameFuelTruck) {
-        // Simple AI: drive towards D9 until close enough
-        let toD9 = new Vector3().copy(d9Root.position).sub(gameFuelTruck.position);
-        let dist = toD9.length();
-        if (dist > 8.0) {
-            toD9.normalize();
-            gameFuelTruck.position.add(toD9.multiplyScalar(8.0 * dt)); // Drive speed
-            gameFuelTruck.rotation.y = Math.atan2(toD9.x, toD9.z);
-        } else {
-            // If near, rapidly refuel and cool down
-            engineFuel = Math.min(100, engineFuel + 20.0 * dt);
-            engineHeat = Math.max(0, engineHeat - 20.0 * dt);
-            if (engineFuel > 15 && engineHeat < 85) isEngineDead = false;
-        }
-        gameFuelTruck.position.y = getTerrainHeight(gameFuelTruck.position.x, gameFuelTruck.position.z) + 1.5;
-    }
-
-    if (chainedVehicle) {
-        // Constrain chained vehicle distance
-        let diff = new Vector3().copy(chainedVehicle.position).sub(d9Root.position);
-        let dist = diff.length();
-        if (dist > CHAIN_LENGTH) {
-            diff.normalize();
-            // Pull the vehicle to the max chain length
-            let pullPos = new Vector3().copy(d9Root.position).add(diff.multiplyScalar(CHAIN_LENGTH));
-            chainedVehicle.position.x = pullPos.x;
-            chainedVehicle.position.z = pullPos.z;
-            chainedVehicle.rotation.y = Math.atan2(-diff.x, -diff.z);
-
-            // Towing heavy objects limits max speed
-            currentMaxSpeed *= 0.7;
-        }
-        chainedVehicle.position.y = getTerrainHeight(chainedVehicle.position.x, chainedVehicle.position.z) + 1.5;
-    }
-
-    // Animate treads
-    treadOffset += d9Velocity * 0.5 * dt;
-    // Differential steering: if turning in place or moving, spin tracks opposite directions
-    let leftTurnDiff = 0;
-    let rightTurnDiff = 0;
-    if (Math.abs(d9Velocity) < 0.1 && Math.abs(d9AngularVelocity) > 0.1) {
-        // Turning in place (skid steer)
-        leftTurnDiff = d9AngularVelocity * 2.0 * dt;
-        rightTurnDiff = -d9AngularVelocity * 2.0 * dt;
+    // Heat & Fuel simulation
+    if (Math.abs(d9Velocity) > 0.05) {
+        engineFuel -= 0.5 * dt;
+        if (engineFuel < 0) engineFuel = 0;
+        engineHeat += (Math.abs(d9Velocity) * 2.0) * dt;
+        if (engineHeat > 100) engineHeat = 100;
     } else {
-        // Moving and turning
-        leftTurnDiff = d9AngularVelocity * 1.5 * dt;
-        rightTurnDiff = -d9AngularVelocity * 1.5 * dt;
+        engineHeat -= 5.0 * dt;
+        if (engineHeat < 0) engineHeat = 0;
     }
 
-    // Scale the tread offset differently since the animation is a wrap-around length,
-    // tread positions are determined by mapping p from [0..totalLength]
-    // treadOffset is the continuous offset mapping to `offset` in updateTreadPositions
-    // It's scaled up by totalLength logic later, so this magnitude determines speed.
-    updateTreadPositions(d9TreadsLeft, treadOffset + leftTurnDiff);
-    updateTreadPositions(d9TreadsRight, treadOffset + rightTurnDiff);
+    if (engineHeat >= 100 || engineFuel <= 0) {
+        isEngineDead = true;
+    }
 }
 
-
-// Dirt Pile & Physics Logic
+let sceneBuildings = [];
 let dirtBoxes = [];
-const DIRT_COUNT = 300; // Fewer blocks but physically simulated
-const DIRT_SIZE = 0.6;
-const GRAVITY = 15.0; // Snappier gravity
 let limbs = [];
-
-// A uniform spatial grid to quickly find nearby debris
-let debrisGrid = new Map();
-const GRID_CELL_SIZE = 2.0;
-
-function getGridKey(x, z) {
-    let gridX = Math.floor(x / GRID_CELL_SIZE);
-    let gridZ = Math.floor(z / GRID_CELL_SIZE);
-    return `${gridX},${gridZ}`;
-}
-
-
-// AABB collision utility
-function checkAABBCollision(posA, sizeA, posB, sizeB) {
-    return (
-        Math.abs(posA.x - posB.x) < (sizeA.x + sizeB.x) / 2 &&
-        Math.abs(posA.y - posB.y) < (sizeA.y + sizeB.y) / 2 &&
-        Math.abs(posA.z - posB.z) < (sizeA.z + sizeB.z) / 2
-    );
-}
-
-// We need to extract world position from the Blade matrix for AABB
-// Since worldMatrix applies to unit cube, its translation column is the world position.
-function getMatrixTranslation(matrix) {
-    let e = matrix.elements;
-    return new Vector3(e[12], e[13], e[14]);
-}
-
-function updatePhysics(dt) {
-    if (!d9Blade) return;
-
-    d9Root.updateMatrix(null);
-    let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
-    let bladeSize = new Vector3(3.5, 1.5, 1.5);
-    let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
-    let chassisSize = new Vector3(2.8, 1.5, 4.5);
-
-    let forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y)).normalize();
-    // Calculate lateral 'right' vector to push debris to the sides
-    let rightVec = new Vector3(forward.z, 0, -forward.x);
-
-    let scoopFloorY = bladeWorldPos.y - (bladeSize.y / 2) + (DIRT_SIZE / 2);
-
-    // 0. Building Collisions & Destruction (Rigid Hit)
-    for (let i = sceneBuildings.length - 1; i >= 0; i--) {
-        let b = sceneBuildings[i];
-        if (!b.isBuilding) continue;
-
-        let hitBlade = checkAABBCollision(b.position, b.scale, bladeWorldPos, bladeSize);
-        let hitChassis = checkAABBCollision(b.position, b.scale, chassisWorldPos, chassisSize);
-
-        if (hitBlade || hitChassis) {
-            // Strong rigid pushback to stop D9 from moving through the object
-            let pushDir = new Vector3().copy(chassisWorldPos).sub(b.position).normalize();
-            pushDir.y = 0;
-
-            // Halt forward velocity immediately if we hit an object
-            if (d9Velocity > 0) d9Velocity = 0;
-
-            // Push D9 back out of intersection
-            d9Root.position.add(pushDir.multiplyScalar(0.5));
-
-            // Apply damage to building
-            let damage = Math.abs(d9Velocity) * 20.0 * dt + 5.0; // static touch causes damage over time
-            b.health -= damage;
-            b.color[0] = Math.min(1.0, b.color[0] + 0.1); // flash red
-
-            // Generate Heat from pushing a solid object
-            engineHeat += 10.0 * dt;
-
-            if (b.health <= 0) {
-                explodeBuilding(b);
-                addCoffee(10); // Reward for destruction
-                sceneBuildings.splice(i, 1);
-            }
-        }
-    }
-
-    // -1. Soldier & Combat Physics
-    for (let i = soldiers.length - 1; i >= 0; i--) {
-        let s = soldiers[i];
-        if (s.isDead) continue;
-
-        let sPos = s.position;
-        let sSize = new Vector3(0.6, 1.2, 0.4);
-
-        let hitBlade = checkAABBCollision(sPos, sSize, bladeWorldPos, bladeSize);
-        let hitChassis = checkAABBCollision(sPos, sSize, chassisWorldPos, chassisSize);
-
-        if (hitBlade || hitChassis) {
-            // Squish logic!
-            s.isDead = true;
-            s.state = "SQUISHED";
-
-            s.children[0].color = [0.8, 0.1, 0.1, 1.0];
-            s.children[1].color = [0.8, 0.1, 0.1, 1.0];
-            s.scale.set(1.5, 0.05, 1.5);
-            s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.05;
-
-            // Reward Coffee for squishing enemies
-            if (s.isEnemy) addCoffee(1);
-
-        } else {
-            // AI
-            s.stateTimer -= dt;
-            if (s.stateTimer <= 0) {
-                s.stateTimer = 1.0 + Math.random() * 2.0;
-                s.state = (s.state === "IDLE") ? "RUN" : "IDLE";
-                if (s.state === "RUN") {
-                    s.rotation.y = Math.random() * Math.PI * 2;
-                }
-            }
-            if (s.state === "RUN") {
-                let sFwd = new Vector3(Math.sin(s.rotation.y), 0, Math.cos(s.rotation.y));
-                s.position.x += sFwd.x * s.speed * dt;
-                s.position.z += sFwd.z * s.speed * dt;
-                s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.6;
-            }
-        }
-    }
-
-    // 1. Build spatial grid for fast repulsion checks
-    debrisGrid.clear();
-    for (let dirt of dirtBoxes) {
-        if (dirt.isSleeping) continue;
-        let key = getGridKey(dirt.position.x, dirt.position.z);
-        if (!debrisGrid.has(key)) debrisGrid.set(key, []);
-        debrisGrid.get(key).push(dirt);
-    }
-
-    // Update Ripper Matrix
-    let ripperWorldPos = new Vector3(0,0,0);
-    if (d9Ripper) {
-        d9Ripper.updateMatrix(d9Root.worldMatrix);
-        if (d9Ripper.children.length > 1) {
-            let shank = d9Ripper.children[1];
-            shank.updateMatrix(d9Ripper.worldMatrix);
-            ripperWorldPos = getMatrixTranslation(shank.worldMatrix);
-            // Move position to the bottom tip of the shank
-            ripperWorldPos.y -= 0.6;
-        } else {
-            ripperWorldPos = getMatrixTranslation(d9Ripper.worldMatrix);
-        }
-    }
-    let ripperSize = new Vector3(1.0, 1.5, 1.0);
-
-    // Spawn dirt chunks if ripper is lowered and moving forward
-    if (d9Ripper && d9Ripper.rotation.x > 0.15 && d9Velocity > 0.5) {
-        if (Math.random() < 0.4 && dirtBoxes.length < 500) {
-            let dirt = new Node("Soil");
-            let s = 0.2 + Math.random() * 0.3;
-            dirt.scale.set(s, s, s);
-            dirt.position.set(
-                ripperWorldPos.x + (Math.random() - 0.5) * 0.5,
-                getTerrainHeight(ripperWorldPos.x, ripperWorldPos.z) + 0.1,
-                ripperWorldPos.z + (Math.random() - 0.5) * 0.5
-            );
-            dirt.color = [0.4, 0.25, 0.15, 1.0]; // Dark brown soil
-            dirt.velocity = new Vector3(
-                -forward.x * 2.0 + (Math.random() - 0.5),
-                3.0 + Math.random() * 2.0,
-                -forward.z * 2.0 + (Math.random() - 0.5)
-            );
-            dirt.isSleeping = false;
-            dirt.radius = s * 0.6;
-            dirtBoxes.push(dirt);
-        }
-    }
-
-    // 2. Physics & Collisions
-    for (let dirt of dirtBoxes) {
-        let dirtSize = dirt.scale;
-
-        // --- Blade Collision (Snowplow Effect) ---
-        let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
-        let hitRipper = d9Ripper && checkAABBCollision(dirt.position, dirtSize, ripperWorldPos, ripperSize);
-
-        if (hitRipper) {
-            dirt.isSleeping = false;
-            // Pop dirt up slightly and drag it backwards along chassis path
-            dirt.velocity.y = 5.0;
-            dirt.velocity.x = -forward.x * 3.0 + (Math.random() - 0.5) * 2.0;
-            dirt.velocity.z = -forward.z * 3.0 + (Math.random() - 0.5) * 2.0;
-        } else if (hit) {
-            dirt.isSleeping = false;
-
-            // Lift mechanic
-            if (scoopFloorY > DIRT_SIZE / 2 && dirt.position.y >= scoopFloorY - 0.2) {
-                dirt.position.y = scoopFloorY;
-                if (dirt.velocity.y < 0) dirt.velocity.y = 0;
-            } else if (dirt.position.y < bladeWorldPos.y + 0.5) {
-                dirt.velocity.y = 3.0;
-            }
-
-            // Calculate which side of the blade the debris is on
-            let toDebris = new Vector3().copy(dirt.position).sub(bladeWorldPos);
-            // Dot product with right vector: > 0 means right side, < 0 means left side
-            let sideDot = rightVec.dot(toDebris);
-            let lateralForce = (sideDot > 0) ? 1.0 : -1.0;
-
-            // Pushing power (Forward + outward lateral arc)
-            let pushForce = 8.0;
-            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.8;
-            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.8;
-
-        } else {
-            // Apply Gravity
-            if (!dirt.isSleeping) {
-                dirt.velocity.y -= GRAVITY * dt;
-            }
-        }
-
-        // --- Particle Soft Body Repulsion ---
-        if (!dirt.isSleeping) {
-            let key = getGridKey(dirt.position.x, dirt.position.z);
-            let nearby = debrisGrid.get(key) || [];
-
-            for (let other of nearby) {
-                if (dirt === other) continue;
-
-                let distSq = dirt.position.distanceToSquared(other.position);
-                let combinedRadii = dirt.radius + other.radius;
-
-                if (distSq < combinedRadii * combinedRadii && distSq > 0.001) {
-                    let dist = Math.sqrt(distSq);
-                    let overlap = combinedRadii - dist;
-
-                    // Push vector
-                    let pushDir = new Vector3().copy(dirt.position).sub(other.position).normalize();
-
-                    // Add gravity/settling logic to repulsion so they don't hover endlessly
-                    if (pushDir.y > 0.5) pushDir.y = 0.5; // limit upward push
-
-                    let force = overlap * 8.0 * dt; // Repulsion strength
-
-                    dirt.velocity.add(new Vector3().copy(pushDir).multiplyScalar(force));
-                    other.isSleeping = false; // wake up neighbors
-                }
-            }
-        }
-
-        // --- Velocity Integration ---
-        if (!dirt.isSleeping) {
-            let displacement = new Vector3().copy(dirt.velocity).multiplyScalar(dt);
-            dirt.position.add(displacement);
-
-            // Strong damping for dirt/mud
-            dirt.velocity.x *= 0.85;
-            dirt.velocity.z *= 0.85;
-        }
-
-        // --- Terrain Collision ---
-        let terrainY = getTerrainHeight(dirt.position.x, dirt.position.z);
-        let baseHeight = terrainY + (dirtSize.y / 2);
-
-        if (dirt.position.y <= baseHeight) {
-            dirt.position.y = baseHeight;
-            dirt.velocity.y = 0;
-
-            if (Math.abs(dirt.velocity.x) < 0.2 && Math.abs(dirt.velocity.z) < 0.2) {
-                dirt.isSleeping = true;
-                dirt.velocity.set(0,0,0);
-            }
-        } else {
-            // High upward velocity damping to prevent anti-gravity hovering
-            dirt.velocity.y -= GRAVITY * 0.5 * dt;
-        }
-
-        dirt.updateMatrix(null);
-    }
-}
-
-// Particle Manager (Exhaust Smoke)
-class Particle {
-    constructor() {
-        this.node = new Node("Particle");
-        this.node.scale.set(0.2, 0.2, 0.2);
-        this.node.color = [0.1, 0.1, 0.1, 0.7]; // Dark semi-transparent smoke
-        this.velocity = new Vector3();
-        this.life = 0;
-        this.maxLife = 1.0;
-        this.active = false;
-    }
-}
-
 let particles = [];
-const MAX_PARTICLES = 50;
+let soldiers = [];
+let gameTank = null;
+let gameAPC = null;
+let gameFuelTruck = null;
 
-function initParticles() {
-    for (let i = 0; i < MAX_PARTICLES; i++) {
-        particles.push(new Particle());
-    }
-}
-
-let particleSpawnTimer = 0;
-function updateParticles(dt) {
-    if (!d9Exhaust) return;
-
-    // Smoke generation is tied to D9 velocity/effort
-    let spawnRate = 0.1;
-    if (Math.abs(d9Velocity) > 0.1) spawnRate = 0.03; // Faster spawn when moving
-
-    particleSpawnTimer += dt;
-    if (particleSpawnTimer >= spawnRate) {
-        particleSpawnTimer = 0;
-        // Find inactive particle
-        for (let p of particles) {
-            if (!p.active) {
-                p.active = true;
-                p.life = 0;
-                // Start at exhaust world pos (approx top of pipe)
-                d9Root.updateMatrix(null);
-                let exhaustPos = getMatrixTranslation(d9Exhaust.worldMatrix);
-                // The exhaust local center is 0.5 up from its base (scale Y is 1)
-                // We'll just add a bit to Y to spawn at the tip
-                p.node.position.set(exhaustPos.x, exhaustPos.y + 0.5, exhaustPos.z);
-
-                // Random upward velocity with slight spread
-                p.velocity.set(
-                    (Math.random() - 0.5) * 1.0,
-                    2.0 + Math.random(),
-                    (Math.random() - 0.5) * 1.0
-                );
-                p.maxLife = 1.0 + Math.random() * 0.5;
-                break;
-            }
-        }
-    }
-
-    for (let p of particles) {
-        if (p.active) {
-            p.life += dt;
-            if (p.life >= p.maxLife) {
-                p.active = false;
-            } else {
-                p.node.position.add(new Vector3().copy(p.velocity).multiplyScalar(dt));
-                // Expand
-                let s = 0.2 + (p.life * 0.8);
-                p.node.scale.set(s, s, s);
-                // Fade out using alpha since blending is now enabled
-                let fade = p.life / p.maxLife;
-                // Fade from dark grey to lighter grey, with alpha dropping to 0
-                p.node.color = [0.1 + fade*0.2, 0.1 + fade*0.2, 0.1 + fade*0.2, 0.7 - fade*0.7];
-                p.node.updateMatrix(null);
-            }
-        }
-    }
-}
-
-// Main Loop
-let lastTime = 0;
-let viewMatrix = new Matrix4();
-let projectionMatrix = new Matrix4();
-let cameraPitch = 0.2; // Initial pitch (in radians)
-
-function render(now) {
-    now *= 0.001; // convert to seconds
-    const dt = now - lastTime;
-    lastTime = now;
-
-    // Update
-    updateKinematics(dt);
-    updatePhysics(dt);
-    updateParticles(dt);
-
-    // Add Game Objective Check
-    updateGameLogic(dt);
-
-    // Draw with dynamic sky gradient
-    // We can simulate a gradient by changing clear color based on camera pitch
-    let skyR = 0.53 - (cameraPitch * 0.2);
-    let skyG = 0.81 - (cameraPitch * 0.1);
-    let skyB = 0.92;
-    gl.clearColor(skyR, skyG, skyB, 1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    // Camera setup
-    const fieldOfView = 45 * Math.PI / 180;
-    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-    const zNear = 0.1;
-    const zFar = 100.0;
-    projectionMatrix.makePerspective(fieldOfView, aspect, zNear, zFar);
-
-    // Make camera follow D9 loosely
-    let distance = 35;
-    let cameraOffset = new Vector3(
-        -Math.sin(d9Root.rotation.y) * Math.cos(cameraPitch) * distance,
-        Math.sin(cameraPitch) * distance + 2, // Base height offset
-        -Math.cos(d9Root.rotation.y) * Math.cos(cameraPitch) * distance
-    );
-    let cameraPos = new Vector3().copy(d9Root.position).add(cameraOffset);
-    let targetPos = new Vector3().copy(d9Root.position);
-    let up = new Vector3(0, 1, 0);
-
-    // Ensure camera stays above the ground/terrain
-    let terrainHeightAtCamera = getTerrainHeight(cameraPos.x, cameraPos.z);
-    if (cameraPos.y < terrainHeightAtCamera + 0.5) {
-        cameraPos.y = terrainHeightAtCamera + 0.5;
-    }
-
-    // Camera Collision against buildings
-    for (let b of sceneBuildings) {
-        let size = b.scale;
-        let pos = b.position;
-
-        // Treat camera like a point or small box to check collision
-        let hit = checkAABBCollision(cameraPos, new Vector3(1, 1, 1), pos, size);
-        if (hit) {
-            // Push camera up above the building to stop it getting stuck inside
-            cameraPos.y = pos.y + (size.y / 2) + 2.0;
-        }
-    }
-
-    viewMatrix.makeLookAt(cameraPos, targetPos, up);
-
-    // Draw D9
-    if (d9Root) {
-        gl.useProgram(program);
-        d9Root.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    // Draw Dirt / Rubble / Limbs
-    for (let dirt of dirtBoxes) {
-        if (dirt.isLimb) {
-            dirt.limbPhase += 5.0 * dt;
-            // Flail animation
-            dirt.rotation.z = Math.sin(dirt.limbPhase) * 0.5;
-            dirt.rotation.x = Math.cos(dirt.limbPhase) * 0.5;
-        }
-        dirt.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    if (gameTank) {
-        gameTank.updateMatrix(null);
-        gameTank.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    if (gameFuelTruck) {
-        gameFuelTruck.updateMatrix(null);
-        gameFuelTruck.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    // Draw Particles
-    for (let p of particles) {
-        if (p.active) {
-            p.node.draw(gl, program, viewMatrix, projectionMatrix);
-        }
-    }
-
-    for (let r of sceneRamps) {
-        r.updateMatrix(null);
-        r.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    for (let b of sceneBuildings) {
-        b.updateMatrix(null);
-        b.draw(gl, program, viewMatrix, projectionMatrix);
-    }
-
-    // Ground plane (just a big flat box)
-    let groundScale = 100;
-    let groundMat = new Matrix4().makeScale(groundScale, 0.1, groundScale).multiply(new Matrix4().makeTranslation(0, -0.05, 0));
-    let groundColor = [0.3, 0.5, 0.2, 1.0]; // Grass green
-
-    let groundModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, groundMat);
-    let groundNormalMatrix = new Matrix4().copy(groundModelViewMatrix);
-
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, groundModelViewMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, groundNormalMatrix.elements);
-    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), groundColor);
-
-    // Enable procedural grid shader logic
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
-
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
-
-    // Road plane overlay
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
-    let roadScaleZ = 100;
-    let roadScaleX = 8;
-    let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, -0.04, 0)); // Slightly above ground
-    let roadColor = [0.25, 0.25, 0.25, 1.0]; // Dark grey asphalt
-
-    let roadModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, roadMat);
-    let roadNormalMatrix = new Matrix4().copy(roadModelViewMatrix);
-
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadModelViewMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadNormalMatrix.elements);
-    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), roadColor);
-
-    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
-
-
-    requestAnimationFrame(render);
-}
-
-// Game State & Level Manager
 let currentLevel = 0;
-let currentMissionType = 1;
-let gameState = "MENU"; // MENU, PLAYING, WON, GARAGE
-
+let gameState = "MENU";
+let gameWon = false;
 let coffeeCurrency = 0;
 
 function addCoffee(amount) {
     coffeeCurrency += amount;
     let ui = document.getElementById("coffeeCount");
     if (ui) ui.innerText = coffeeCurrency;
+}
+
+function getTerrainHeightBase(x, z) {
+    return 0; // Flat terrain to perfectly match the visual ground plane
+}
+
+function getTerrainHeight(x, z) {
+    let baseH = getTerrainHeightBase(x, z);
+    // Add soft ramp over sleeping dirt piles
+    for(let d of dirtBoxes) {
+        if (!d.isSleeping || d.isSmoke) continue;
+        let dist = Math.sqrt((d.position.x - x)**2 + (d.position.z - z)**2);
+        if (dist < d.radius * 2.5) {
+            let pileTop = d.position.y + (d.scale.y / 2);
+            if (pileTop > baseH + 0.5) {
+                return pileTop;
+            }
+        }
+    }
+    return baseH;
+}
+
+function checkAABBCollision(posA, sizeA, posB, sizeB) {
+    return (Math.abs(posA.x - posB.x) * 2 < (sizeA.x + sizeB.x)) &&
+           (Math.abs(posA.y - posB.y) * 2 < (sizeA.y + sizeB.y)) &&
+           (Math.abs(posA.z - posB.z) * 2 < (sizeA.z + sizeB.z));
+}
+
+function spawnDirt(pos) {
+    let d = new Node("Dirt");
+    let s = 1.0 + Math.random();
+    d.scale.set(s, s, s);
+    d.position.copy(pos);
+    d.color = [0.4, 0.25, 0.15, 1.0];
+    d.velocity = new Vector3((Math.random()-0.5)*2, 2.0+Math.random()*2, (Math.random()-0.5)*2);
+    d.radius = s * 0.6;
+    d.isSleeping = false;
+    dirtBoxes.push(d);
+}
+
+function initParticles() {
+    for (let i = 0; i < 50; i++) {
+        let p = {
+            node: new Node("Particle" + i),
+            velocity: new Vector3(),
+            life: 0,
+            maxLife: 1.0,
+            active: false
+        };
+        p.node.scale.set(0.3, 0.3, 0.3);
+        particles.push(p);
+    }
+}
+
+function createBuilding(name, w, h, d, x, z, color) {
+    let b = new Node(name);
+    b.scale.set(w, h, d);
+    let terrainY = getTerrainHeightBase(x, z);
+    b.position.set(x, terrainY + h / 2, z);
+    b.color = color;
+    b.isBuilding = true;
+    b.health = 100;
+    b.maxHealth = 100;
+
+    // Procedural details
+    let door = new Node("Door");
+    door.scale.set(2.0, 3.0, 0.3);
+    door.position.set(0, -h/2 + 1.5, d/2 + 0.1);
+    door.color = [0.3, 0.2, 0.1, 1.0];
+    b.add(door);
+
+    let nX = Math.max(1, Math.floor(w / 3));
+    let nY = Math.max(1, Math.floor(h / 4));
+    for(let i=0; i<nX; i++) {
+        for(let j=0; j<nY; j++) {
+            if (j === 0 && Math.abs((i - nX/2 + 0.5) * 3) < 1.5) continue; // skip door
+            if (Math.random() > 0.2) {
+                let wx = (i - nX/2 + 0.5) * 3;
+                let wy = (j - nY/2 + 0.5) * 4;
+                let wz = d/2 + 0.1;
+
+                let isArc = Math.random() > 0.5;
+                let wF = new Node("WindowF");
+                wF.scale.set(1.5, isArc ? 2.0 : 1.5, 0.2);
+                wF.position.set(wx, wy, wz);
+                wF.color = [0.2, 0.2, 0.3, 1.0];
+                b.add(wF);
+
+                if (Math.random() > 0.7) {
+                    let blanket = new Node("Blanket");
+                    blanket.scale.set(1.6, 1.8, 0.3);
+                    blanket.position.set(wx, wy + 0.1, wz + 0.1);
+                    blanket.color = [0.6, 0.5, 0.4, 1.0];
+                    b.add(blanket);
+                }
+            }
+        }
+    }
+    return b;
+}
+
+function openGarage() {
+    gameState = "GARAGE";
+    document.getElementById('garageMenu').style.display = 'block';
+    updateGarageUI();
+}
+function closeGarage() {
+    gameState = "PLAYING";
+    document.getElementById('garageMenu').style.display = 'none';
 }
 
 const garageUpgrades = {
@@ -1624,32 +802,15 @@ const garageUpgrades = {
     blade: { cost: 20, level: 0, maxLevel: 5 }
 };
 
-function openGarage() {
-    gameState = "GARAGE";
-    document.getElementById('garageMenu').style.display = 'block';
-    updateGarageUI();
-}
-
-function closeGarage() {
-    gameState = "PLAYING";
-    document.getElementById('garageMenu').style.display = 'none';
-}
-
 function buyUpgrade(type) {
     const upg = garageUpgrades[type];
     if (upg && coffeeCurrency >= upg.cost && upg.level < upg.maxLevel) {
         addCoffee(-upg.cost);
         upg.level++;
-        upg.cost = Math.floor(upg.cost * 1.5); // Increase cost
+        upg.cost = Math.floor(upg.cost * 1.5);
         updateGarageUI();
-
-        // Apply immediate effects if any
-        if (type === 'fuel') {
-            engineFuel = 100; // Refuel on upgrade
-        }
-        if (type === 'cooling') {
-            engineHeat = 0; // Cool down on upgrade
-        }
+        if (type === 'fuel') engineFuel = 100;
+        if (type === 'cooling') engineHeat = 0;
     }
 }
 
@@ -1658,715 +819,441 @@ function updateGarageUI() {
         const btn = document.querySelector(`#upg${key.charAt(0).toUpperCase() + key.slice(1)} button`);
         if (btn) {
             if (upg.level >= upg.maxLevel) {
-                btn.innerText = "MAXED";
+                btn.innerHTML = "MAXED";
                 btn.disabled = true;
             } else {
-                btn.innerText = `Buy (${upg.cost} 📦)`;
+                btn.innerHTML = `Buy (${upg.cost} <svg width="1em" height="1.3em" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" style="vertical-align: -0.25em;"><rect x="10" y="20" width="80" height="90" rx="5" fill="#C1121F"/><rect x="10" y="20" width="80" height="20" fill="#1A1A1A"/><path d="M10 20 Q 50 10 90 20 Z" fill="#1A1A1A"/><path d="M30 60 L50 45 L70 60 L60 85 L40 85 Z" fill="#FDF0D5"/><rect x="10" y="40" width="80" height="4" fill="#1A1A1A"/><rect x="10" y="100" width="80" height="4" fill="#1A1A1A"/></svg>)`;
                 btn.disabled = coffeeCurrency < upg.cost;
             }
         }
     }
 }
 
-// Bootstrap
-window.onload = () => {
-    initWebGL();
-    buildD9();
-    initParticles();
-
-    // Setup Menu
-    document.getElementById("startBtn").addEventListener("click", () => {
-        document.getElementById("mainMenu").style.display = "none";
-        document.getElementById("gameHUD").style.display = "block";
-        loadLevel(1);
-    });
-
-    // Setup Garage Button
-    let closeGarageBtn = document.getElementById("closeGarageBtn");
-    if (closeGarageBtn) {
-        closeGarageBtn.addEventListener("click", () => {
-            closeGarage();
-        });
-    }
-
-    requestAnimationFrame(render);
-};
-
 function loadLevel(levelIndex) {
     currentLevel = levelIndex;
-    gameState = "PLAYING";
     gameWon = false;
+    gameState = "PLAYING";
 
-    // Reset D9
     d9Root.position.set(0, 1, 0);
     d9Root.rotation.set(0, 0, 0);
     d9Velocity = 0;
     d9AngularVelocity = 0;
 
-    // Clear old state
     dirtBoxes = [];
     limbs = [];
-    debrisGrid.clear();
     particles.forEach(p => p.active = false);
-
-    // Initialize arrays
-    sceneRamps = [];
     sceneBuildings = [];
     soldiers = [];
     gameTank = null;
     gameAPC = null;
     gameFuelTruck = null;
-    initialDebrisInPath = 0;
 
-    // Remove old objective styling
-    document.getElementById("objectiveUI").classList.remove("success-pulse");
-    let uiFill = document.getElementById("progressFill");
-    uiFill.style.width = "0%";
-
-    // Reset Engine state
-    engineFuel = 100;
-    engineHeat = 0;
-    isEngineDead = false;
-    chainedVehicle = null;
-
-    // Randomize Mission Type (1: Escort Tank, 2: Demolition, 3: Ambush)
-    currentMissionType = Math.floor(Math.random() * 3) + 1;
-
-    if (currentMissionType === 1) {
-        initDirt_Level1();
-        sceneRamps = buildRamp();
-        sceneBuildings = buildScenery();
-        gameTank = buildTank();
-        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the rubble blocking the road!`;
-    } else if (currentMissionType === 2) {
-        sceneRamps = buildRamp();
-        sceneBuildings = buildScenery();
-
-        let targetHQ = createBuilding("EnemyHQ", 20, 30, 20, 0, 40, [0.3, 0.3, 0.3, 1.0]);
-        targetHQ.isTarget = true;
-        sceneBuildings.push(targetHQ);
-
-        for(let i = 0; i < 5 + levelIndex; i++) {
-            soldiers.push(buildSoldier(true, (Math.random()-0.5)*20, 30 + Math.random()*5));
+    if (levelIndex === 1) {
+        currentMissionType = 1;
+        document.getElementById("objectiveText").innerText = `Mission 1: Clear the rubble!`;
+        // Spawn dirt right in front
+        for(let i=0; i<30; i++) {
+            let d = new Node("Dirt");
+            let s = 1.0 + Math.random()*2.0;
+            d.scale.set(s,s,s);
+            d.position.set(-5 + Math.random()*10, 5, 10 + Math.random()*10);
+            d.color = [0.8, 0.4, 0.2, 1.0];
+            d.velocity = new Vector3();
+            d.isSleeping = false;
+            d.radius = s*0.6;
+            dirtBoxes.push(d);
         }
-
-        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Destroy the Enemy HQ at the end of the road!`;
-    } else if (currentMissionType === 3) {
-        sceneBuildings = buildScenery();
-        gameAPC = buildAPC();
+    } else {
+        currentMissionType = 2;
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Escort the Tank through Ambush!`;
         gameTank = buildTank();
-        gameTank.position.set(5, 1.5, -15);
-
-        for(let i = 0; i < 6; i++) {
-            soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, -10 + Math.random()*5));
-        }
-
-        // Increase enemy count based on endless level
-        for(let i = 0; i < 10 + (levelIndex * 2); i++) {
+        gameTank.position.set(0, 1.5, -15);
+        for(let i=0; i<10 + (levelIndex*2); i++) {
             soldiers.push(buildSoldier(true, (Math.random()-0.5)*40, 20 + Math.random()*30));
         }
-
-        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Lead the convoy through the ambush!`;
+        for(let i=0; i<5; i++) {
+            let x = (Math.random()-0.5)*60;
+            let z = 20 + Math.random()*50;
+            sceneBuildings.push(createBuilding("Bldg", 10, 20, 10, x, z, [0.5, 0.5, 0.5, 1.0]));
+        }
     }
 }
 
 function advanceLevel() {
+    if (gameWon) return; // Prevent multiple triggers
+    gameWon = true;
     addCoffee(50); // Big reward for beating level
+
     setTimeout(() => {
-        // Endless Campaign loop
-        loadLevel(currentLevel + 1);
-    }, 4000); // Wait 4 seconds after winning before transitioning
-}
+        let lMenu = document.getElementById("levelCompleteMenu");
+        if(lMenu) lMenu.style.display = "flex";
 
-function spawnSmokeEffect(pos, size, count) {
-    for (let i = 0; i < count; i++) {
-        for (let p of particles) {
-            if (!p.active) {
-                p.active = true;
-                p.life = 0;
-                p.maxLife = 0.5 + Math.random() * 0.5;
-
-                let spreadX = (Math.random() - 0.5) * size;
-                let spreadY = Math.random() * size * 0.5;
-                let spreadZ = (Math.random() - 0.5) * size;
-
-                p.node.position.set(pos.x + spreadX, pos.y + spreadY, pos.z + spreadZ);
-                p.node.color = [0.2, 0.2, 0.2, 1.0]; // thick dark smoke
-
-                // Explode outwards rapidly
-                p.velocity.set(spreadX * 5.0, 5.0 + Math.random() * 5.0, spreadZ * 5.0);
-                break;
-            }
+        // Spawn fuel truck and refuel
+        if (!gameFuelTruck) {
+            gameFuelTruck = buildFuelTruck();
+            if(d9Root) gameFuelTruck.position.set(d9Root.position.x - 10, d9Root.position.y, d9Root.position.z - 30);
         }
-    }
+
+        setTimeout(() => {
+            let rStats = document.getElementById("refuelStats");
+            if(rStats) rStats.innerHTML += "<p style='color: #00ff00; font-weight: bold;'>Refueled and Repaired!</p>";
+            engineHeat = 0;
+            engineFuel = maxFuel;
+            isEngineDead = false;
+            let nBtn = document.getElementById("nextLevelBtn");
+            if(nBtn) nBtn.style.display = "block";
+
+            if(gameFuelTruck) gameFuelTruck.leaving = true;
+        }, 3000);
+
+    }, 2000);
 }
+let lastTime = 0;
 
-function initDirt_Level1() {
-    let index = 0;
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    let dt = (timestamp - lastTime) / 1000.0;
+    if (dt > 0.1) dt = 0.1;
 
-    let blockCenterX = 0;
-    let blockCenterZ = 20;
-    let spreadX = 8;
-    let spreadZ = 5;
+    updateControls(dt);
 
-    for (let i = 0; i < DIRT_COUNT; i++) {
-        let rx = (Math.random() - 0.5) * spreadX * 2;
-        let rz = (Math.random() - 0.5) * spreadZ * 2;
+    // D9 Ground Collision & Pitch/Roll
+    let d9Forward = new Vector3(Math.sin(d9Root.rotation.y), 0, Math.cos(d9Root.rotation.y));
+    let d9Right = new Vector3(Math.sin(d9Root.rotation.y + Math.PI / 2), 0, Math.cos(d9Root.rotation.y + Math.PI / 2));
+    let chassisPos = d9Root.position;
 
-        let y = getTerrainHeight(blockCenterX + rx, blockCenterZ + rz) + (Math.random() * 5) + 0.5;
+    let frontY = getTerrainHeightBase(chassisPos.x + d9Forward.x * 3.0, chassisPos.z + d9Forward.z * 3.0);
+    let backY  = getTerrainHeightBase(chassisPos.x - d9Forward.x * 3.0, chassisPos.z - d9Forward.z * 3.0);
+    let leftY  = getTerrainHeightBase(chassisPos.x + d9Right.x * 2.0,   chassisPos.z + d9Right.z * 2.0);
+    let rightY = getTerrainHeightBase(chassisPos.x - d9Right.x * 2.0,   chassisPos.z - d9Right.z * 2.0);
 
-        let isLimb = Math.random() < 0.05 && index > 50;
-        let isMud = Math.random() < 0.15 && !isLimb;
+    let targetPitch = Math.atan2(frontY - backY, 6.0) * 0.5;
+    let targetRoll  = Math.atan2(leftY - rightY, 4.0) * 0.5;
 
-        let dirt = new Node(isLimb ? `Limb${index}` : (isMud ? `Mud${index}` : `Debris${index}`));
-        dirt.position.set(blockCenterX + rx, y, blockCenterZ + rz);
-        dirt.velocity = new Vector3(0, 0, 0);
-        dirt.isSleeping = false;
+    d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt;
+    d9Root.rotation.z += (targetRoll - d9Root.rotation.z) * 5 * dt;
 
-        if (isLimb) {
-            dirt.scale.set(DIRT_SIZE * 0.4, DIRT_SIZE * 1.5, DIRT_SIZE * 0.4);
-            dirt.color = [0.8, 0.6, 0.5, 1.0];
-            dirt.isLimb = true;
-            dirt.isMud = false;
-            dirt.limbPhase = Math.random() * Math.PI * 2;
-            limbs.push(dirt);
-        } else if (isMud) {
-            dirt.scale.set(DIRT_SIZE * 2.0, DIRT_SIZE * 0.5, DIRT_SIZE * 2.0);
-            dirt.color = [0.4, 0.25, 0.15, 1.0];
-            dirt.isLimb = false;
-            dirt.isMud = true;
-        } else {
-            let rType = Math.random();
-            if (rType < 0.2) {
-                dirt.scale.set(1.5, 0.3, 1.0);
-                dirt.color = [0.6, 0.6, 0.6, 1.0];
-            } else if (rType < 0.3) {
-                dirt.scale.set(0.2, 0.2, 2.0);
-                dirt.color = [0.4, 0.2, 0.1, 1.0];
-            } else if (rType < 0.5) {
-                dirt.scale.set(0.6, 0.3, 0.4);
-                dirt.color = [0.6, 0.3, 0.2, 1.0];
+    let centerTerrainY = getTerrainHeight(chassisPos.x, chassisPos.z);
+    d9Root.position.y += (centerTerrainY + 1.0 - d9Root.position.y) * 15 * dt;
+
+    d9Root.updateMatrix(null);
+    let bladeWorldPos = bladeNode.getGlobalPosition(d9Root.matrix);
+
+    // Ripper Digging
+    let ripperWorldPos = ripperNode.getGlobalPosition(d9Root.matrix);
+    let ripperTerrainY = getTerrainHeightBase(ripperWorldPos.x, ripperWorldPos.z);
+    if (ripperWorldPos.y < ripperTerrainY && d9Velocity > 0.5 && Math.random() < 0.2) {
+        spawnDirt(new Vector3(ripperWorldPos.x, ripperTerrainY + 0.5, ripperWorldPos.z));
+    }
+
+    // Dirt Physics
+    for (let i = 0; i < dirtBoxes.length; i++) {
+        let d = dirtBoxes[i];
+        if (d.isSmoke) {
+            d.life -= dt;
+            d.position.y += 2.0 * dt;
+            d.color[3] = Math.max(0, d.life / 2.0);
+            if (d.life <= 0) { dirtBoxes.splice(i, 1); i--; }
+            continue;
+        }
+
+        if (d.isSleeping && d.position.y < bladeWorldPos.y) continue; // Optimization
+
+        if (!d.carried) {
+            d.velocity.y -= 9.8 * dt; // Gravity
+            d.position.add(d.velocity.clone().multiplyScalar(dt)); // Use clone so we don't mutate velocity
+            d.velocity.x *= 0.95;
+            d.velocity.z *= 0.95;
+        }
+
+        // Blade Collision
+        let bladeTilt = bladeArms.rotation.x;
+        let diff = new Vector3().copy(d.position).sub(bladeWorldPos);
+        if (diff.lengthSq() < 16.0) { // Broad phase
+            let dx = d.position.x - bladeWorldPos.x;
+            let dy = d.position.y - bladeWorldPos.y;
+            let dz = d.position.z - bladeWorldPos.z;
+
+            // Simple box check vs blade
+            if (Math.abs(dx) < 2.0 && Math.abs(dz) < 1.0 && Math.abs(dy) < 1.5) {
+                if (bladeTilt > 0.1) {
+                    // Carry mode
+                    d.position.x = bladeWorldPos.x + dx * 0.5;
+                    d.position.z = bladeWorldPos.z + dz * 0.5;
+                    d.position.y = bladeWorldPos.y + 0.8;
+                    d.carried = true;
+                } else {
+                    // Push mode
+                    d.carried = false;
+                    let pushDir = new Vector3(dx, 0, dz).normalize();
+                    let pushSpeed = (enginePower * 2) * dt * 1.5;
+                    if (bladeTilt < -0.1) pushSpeed *= 0.1; // precise drop
+
+                    d.position.x += (pushDir.x + d9Forward.x * 2.0) * pushSpeed;
+                    d.position.z += (pushDir.z + d9Forward.z * 2.0) * pushSpeed;
+                    if (bladeTilt > -0.1) {
+                        d.position.y += 2.0 * dt;
+                    }
+                }
             } else {
-                let sMod = 0.5 + Math.random() * 0.8;
-                dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
-                let g = 0.3 + Math.random() * 0.2;
-                dirt.color = [g, g, g, 1.0];
+                d.carried = false;
             }
-            dirt.isLimb = false;
-        }
-
-        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6;
-
-        dirtBoxes.push(dirt);
-        index++;
-    }
-}
-
-// Terrain Logic
-// Build a ramp in front of the D9 starting position
-const RAMP_START = 15;
-const RAMP_END = 25;
-const RAMP_HEIGHT = 4.0;
-const RAMP_WIDTH = 8.0;
-
-function getTerrainHeight(x, z) {
-    let baseH = 0;
-    if (Math.abs(x) <= RAMP_WIDTH / 2) {
-        if (z > RAMP_START && z < RAMP_END) {
-            // Slope up from START to END
-            let progress = (z - RAMP_START) / (RAMP_END - RAMP_START);
-            baseH = progress * RAMP_HEIGHT;
-        } else if (z >= RAMP_END && z < RAMP_END + 5) {
-            // Flat top before drop
-            baseH = RAMP_HEIGHT;
-        }
-    }
-
-    // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over
-    let gridKey = getGridKey(x, z);
-    if (debrisGrid && debrisGrid.has(gridKey)) {
-        let nearby = debrisGrid.get(gridKey);
-        let maxPileHeight = baseH;
-        for(let dirt of nearby) {
-            // Ignore blocks currently in the air or moving fast
-            if (!dirt.isSleeping) continue;
-
-            // We only care about the top of the block, not its center position
-            let dirtTopY = dirt.position.y + (dirt.scale.y / 2);
-            if (dirtTopY > maxPileHeight) {
-                maxPileHeight = dirtTopY;
-            }
-        }
-        if (maxPileHeight > baseH + 0.5) {
-            return maxPileHeight;
-        }
-    }
-
-    return baseH;
-}
-
-let rampNode;
-function buildRamp() {
-    let length = RAMP_END - RAMP_START;
-
-    // Calculate hypotenuse to properly size the box to stretch from start to end
-    let hypotenuse = Math.sqrt(RAMP_HEIGHT*RAMP_HEIGHT + length*length);
-    let angle = Math.atan2(RAMP_HEIGHT, length);
-
-    rampNode = new Node("Ramp");
-    // Make it thin but stretch the full hypotenuse length
-    rampNode.scale.set(RAMP_WIDTH, 0.2, hypotenuse);
-    rampNode.rotation.x = -angle; // Lean up
-
-    // Align visual top surface perfectly with the mathematical getTerrainHeight plane
-    // Adjust y pos downwards by half its thickness to prevent hovering
-    rampNode.position.set(0, (RAMP_HEIGHT / 2) - 0.1, (RAMP_START + RAMP_END) / 2);
-    rampNode.color = [0.25, 0.45, 0.15, 1.0];
-
-    // Flat top part
-    let rampTopNode = new Node("RampTop");
-    rampTopNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, 5);
-    // Align the very top face to mathematically perfectly equal RAMP_HEIGHT
-    rampTopNode.position.set(0, RAMP_HEIGHT / 2, RAMP_END + 2.5);
-    rampTopNode.color = [0.2, 0.4, 0.1, 1.0];
-
-    // We add them directly to the scene drawing logic later
-    return [rampNode, rampTopNode];
-}
-
-let sceneRamps = [];
-
-let sceneBuildings = [];
-let gameTank = null;
-let gameAPC = null;
-let gameFuelTruck = null;
-let soldiers = [];
-let gameWon = false;
-let initialDebrisInPath = 0;
-
-let chainedVehicle = null;
-const CHAIN_LENGTH = 12.0;
-
-function buildSoldier(isEnemy, x, z) {
-    let sRoot = new Node(isEnemy ? "Enemy" : "Friendly");
-    sRoot.position.set(x, getTerrainHeight(x, z) + 0.9, z);
-
-    // Body
-    let body = new Node("Body");
-    body.scale.set(0.6, 1.2, 0.4);
-    body.position.set(0, 0, 0);
-    // Green (Friendly) vs Orange/Brown (Enemy)
-    body.color = isEnemy ? [0.8, 0.4, 0.1, 1.0] : [0.2, 0.6, 0.2, 1.0];
-    sRoot.add(body);
-
-    // Head
-    let head = new Node("Head");
-    head.scale.set(0.4, 0.4, 0.4);
-    head.position.set(0, 0.8, 0);
-    head.color = [0.9, 0.7, 0.6, 1.0];
-    sRoot.add(head);
-
-    sRoot.isEnemy = isEnemy;
-    sRoot.isDead = false;
-    sRoot.health = 20;
-    sRoot.speed = 1.0 + Math.random() * 1.5;
-    sRoot.state = "IDLE"; // IDLE, RUN, SQUISHED
-    sRoot.stateTimer = Math.random() * 2;
-
-    return sRoot;
-}
-
-function buildAPC() {
-    let apcRoot = new Node("APC");
-    apcRoot.position.set(0, 1.5, -20);
-
-    let body = new Node("APCBody");
-    body.scale.set(2.5, 1.5, 4.5);
-    body.color = [0.2, 0.3, 0.4, 1.0]; // Dark blue/grey
-    apcRoot.add(body);
-
-    // Wheels (4 per side)
-    for(let i=0; i<4; i++) {
-        let zPos = -1.5 + i * 1.0;
-        let wL = new Node("WheelL");
-        wL.scale.set(0.4, 0.8, 0.8);
-        wL.position.set(-1.4, -0.6, zPos);
-        wL.color = [0.1, 0.1, 0.1, 1.0];
-        apcRoot.add(wL);
-
-        let wR = new Node("WheelR");
-        wR.scale.set(0.4, 0.8, 0.8);
-        wR.position.set(1.4, -0.6, zPos);
-        wR.color = [0.1, 0.1, 0.1, 1.0];
-        apcRoot.add(wR);
-    }
-
-    return apcRoot;
-}
-
-function explodeBuilding(b) {
-    // Generate rubble based on building size
-    let volume = b.scale.x * b.scale.y * b.scale.z;
-    let rubbleCount = Math.min(100, Math.floor(volume / 5)); // Cap rubble count for performance
-
-    for (let i = 0; i < rubbleCount; i++) {
-        let rx = b.position.x + (Math.random() - 0.5) * b.scale.x;
-        let ry = b.position.y + (Math.random() - 0.5) * b.scale.y;
-        let rz = b.position.z + (Math.random() - 0.5) * b.scale.z;
-
-        let dirt = new Node(`BuildingDebris${i}`);
-        dirt.position.set(rx, ry, rz);
-
-        // Explosive velocity outward from center
-        let vx = (rx - b.position.x) * 2.0;
-        let vy = 5.0 + Math.random() * 5.0; // Shoot up
-        let vz = (rz - b.position.z) * 2.0;
-        dirt.velocity = new Vector3(vx, vy, vz);
-
-        dirt.isSleeping = false;
-
-        let sMod = 0.5 + Math.random() * 1.5;
-        dirt.scale.set(DIRT_SIZE * sMod, DIRT_SIZE * sMod, DIRT_SIZE * sMod);
-
-        // Inherit building color loosely
-        let cVar = (Math.random() - 0.5) * 0.2;
-        dirt.color = [
-            Math.max(0, Math.min(1, b.color[0] + cVar)),
-            Math.max(0, Math.min(1, b.color[1] + cVar)),
-            Math.max(0, Math.min(1, b.color[2] + cVar)),
-            1.0
-        ];
-
-        dirt.radius = Math.max(dirt.scale.x, dirt.scale.y, dirt.scale.z) * 0.6;
-        dirtBoxes.push(dirt);
-    }
-}
-
-function buildFuelTruck() {
-    let root = new Node("Oshkosh");
-    root.position.set(-15, 1.5, -30);
-
-    // Cab
-    let cab = new Node("TruckCab");
-    cab.scale.set(2.2, 1.8, 2.5);
-    cab.position.set(0, 0, 2);
-    cab.color = [0.8, 0.7, 0.2, 1.0]; // Desert tan
-    root.add(cab);
-
-    // Tanker
-    let tank = new Node("FuelTank");
-    tank.scale.set(2.0, 2.0, 5.0);
-    tank.position.set(0, 0, -2);
-    tank.color = [0.7, 0.6, 0.2, 1.0];
-    root.add(tank);
-
-    // Wheels
-    for(let i=0; i<3; i++) {
-        let zPos = 2.5 - i * 2.5;
-        let wL = new Node("WheelL");
-        wL.scale.set(0.5, 1.0, 1.0);
-        wL.position.set(-1.3, -0.6, zPos);
-        wL.color = [0.1, 0.1, 0.1, 1.0];
-        root.add(wL);
-
-        let wR = new Node("WheelR");
-        wR.scale.set(0.5, 1.0, 1.0);
-        wR.position.set(1.3, -0.6, zPos);
-        wR.color = [0.1, 0.1, 0.1, 1.0];
-        root.add(wR);
-    }
-
-    return root;
-}
-
-function buildTank() {
-    let tankRoot = new Node("Tank");
-    tankRoot.position.set(0, 1.5, -15); // Start far behind the bulldozer
-
-    // Tank Body
-    let body = new Node("TankBody");
-    body.scale.set(3, 1.2, 5);
-    body.color = [0.3, 0.4, 0.2, 1.0]; // Olive green
-    tankRoot.add(body);
-
-    // Tank Turret
-    let turret = new Node("TankTurret");
-    turret.scale.set(2, 1, 2.5);
-    turret.position.set(0, 1.1, -0.5);
-    turret.color = [0.25, 0.35, 0.15, 1.0];
-    tankRoot.add(turret);
-
-    // Tank Barrel
-    let barrel = new Node("TankBarrel");
-    barrel.scale.set(0.3, 0.3, 4);
-    barrel.position.set(0, 1.1, 2.5);
-    barrel.color = [0.2, 0.2, 0.2, 1.0];
-    tankRoot.add(barrel);
-
-    // Simple Tank Tracks
-    let tLeft = new Node("TankTrackL");
-    tLeft.scale.set(0.6, 1.0, 5.2);
-    tLeft.position.set(-1.8, -0.1, 0);
-    tLeft.color = [0.1, 0.1, 0.1, 1.0];
-    tankRoot.add(tLeft);
-
-    let tRight = new Node("TankTrackR");
-    tRight.scale.set(0.6, 1.0, 5.2);
-    tRight.position.set(1.8, -0.1, 0);
-    tRight.color = [0.1, 0.1, 0.1, 1.0];
-    tankRoot.add(tRight);
-
-    return tankRoot;
-}
-
-function updateGameLogic(dt) {
-    if (gameState !== "PLAYING") return;
-
-    let uiText = document.getElementById("objectiveText");
-    let uiFill = document.getElementById("progressFill");
-
-    if (currentMissionType === 0) {
-        if (gameWon) return;
-
-        let tutorialWall = sceneBuildings.find(b => b.isTarget);
-        if (!tutorialWall) {
-            gameWon = true;
-            uiText.innerText = "Training Complete! Great job!";
-            uiText.style.color = "#44ff44";
-            document.getElementById("objectiveUI").classList.add("success-pulse");
-            uiFill.style.width = "100%";
-            advanceLevel();
         } else {
-            let pct = Math.max(0, Math.min(100, ((tutorialWall.maxHealth - tutorialWall.health) / tutorialWall.maxHealth) * 100));
-            uiFill.style.width = pct + "%";
-            uiText.innerText = `Training: Drive forward and collapse the wall! (HP: ${Math.floor(tutorialWall.health)})`;
+            d.carried = false;
         }
 
-    } else if (currentMissionType === 1) {
-        if (gameWon) {
-            if (gameTank) {
-                gameTank.position.z += 25.0 * dt;
-                let ty = getTerrainHeight(gameTank.position.x, gameTank.position.z);
-                gameTank.position.y += (ty + 1.5 - gameTank.position.y) * 5 * dt;
-            }
-            return;
-        }
+        // Debris vs Debris stacking
+        for (let j = i + 1; j < dirtBoxes.length; j++) {
+            let d2 = dirtBoxes[j];
+            if (d2.isSmoke) continue;
+            let distY = Math.abs(d.position.y - d2.position.y);
+            let distX = Math.abs(d.position.x - d2.position.x);
+            let distZ = Math.abs(d.position.z - d2.position.z);
 
-        let currentDebrisInPath = 0;
-        for(let dirt of dirtBoxes) {
-            if (dirt.position.x > -5 && dirt.position.x < 5 && dirt.position.z > 12 && dirt.position.z < 28) {
-                currentDebrisInPath++;
-            }
-        }
-
-        if (initialDebrisInPath === 0 && currentDebrisInPath > 0) {
-            initialDebrisInPath = currentDebrisInPath;
-        }
-
-        if (initialDebrisInPath > 0) {
-            let cleared = initialDebrisInPath - currentDebrisInPath;
-            let pct = Math.max(0, Math.min(100, (cleared / initialDebrisInPath) * 100));
-            uiFill.style.width = pct + "%";
-
-            if (currentDebrisInPath < initialDebrisInPath * 0.7) {
-                gameWon = true;
-                uiText.innerText = "Path Cleared! The tank is advancing!";
-                uiText.style.color = "#44ff44";
-                document.getElementById("objectiveUI").classList.add("success-pulse");
-                uiFill.style.width = "100%";
-                advanceLevel();
+            if (distX < d.radius * 1.5 && distZ < d.radius * 1.5) { // Loosen horizontal tolerance for stacking
+                if (distY < d.radius * 2.0) {
+                    if (d.position.y > d2.position.y) {
+                        d.position.y = d2.position.y + d2.radius * 2.0;
+                        d.velocity.y = 0;
+                    } else {
+                        d2.position.y = d.position.y + d.radius * 2.0;
+                        d2.velocity.y = 0;
+                    }
+                }
             } else {
-                uiText.innerText = `Mission ${currentLevel}: Clear the rubble! (${currentDebrisInPath} blocks remain)`;
-                uiText.style.color = "#fff";
+                let dist = d.position.distanceTo(d2.position);
+                let minDist = d.radius + d2.radius;
+                if (dist < minDist && dist > 0.01) {
+                    let overlap = minDist - dist;
+                    let pushDir = new Vector3().copy(d.position).sub(d2.position);
+                    pushDir.y = 0; pushDir.normalize();
+                    let pushForce = pushDir.multiplyScalar(overlap * 2.0 * dt);
+                    d.position.add(pushForce);
+                    d2.position.sub(pushForce);
+                }
             }
         }
-    } else if (currentMissionType === 2) {
-        if (gameWon) return;
 
-        // Find Target HQ
-        let targetHQ = sceneBuildings.find(b => b.isTarget);
-        if (!targetHQ) {
-            // Target destroyed!
-            gameWon = true;
-            uiText.innerText = "HQ Destroyed! Excellent work!";
-            uiText.style.color = "#44ff44";
-            document.getElementById("objectiveUI").classList.add("success-pulse");
-            uiFill.style.width = "100%";
-            advanceLevel();
-        } else {
-            // Update progress bar based on HQ health
-            let pct = Math.max(0, Math.min(100, ((targetHQ.maxHealth - targetHQ.health) / targetHQ.maxHealth) * 100));
-            uiFill.style.width = pct + "%";
-            uiText.innerText = `Mission ${currentLevel}: Destroy Enemy HQ! (HP: ${Math.floor(targetHQ.health)})`;
+        // Terrain Collision
+        let ty = getTerrainHeightBase(d.position.x, d.position.z);
+        if (d.position.y <= ty + d.radius) {
+            d.position.y = ty + d.radius;
+            d.velocity.y = 0;
+            if (Math.abs(d.velocity.x) < 0.2 && Math.abs(d.velocity.z) < 0.2) {
+                d.isSleeping = true;
+                d.velocity.set(0,0,0);
+            }
         }
-    } else if (currentMissionType === 3) {
-        if (gameWon) {
-            if (gameAPC) gameAPC.position.z += 25.0 * dt;
-            if (gameTank) gameTank.position.z += 25.0 * dt;
+    }
 
-            // Friendlies charge forward
-            soldiers.filter(s => !s.isEnemy && !s.isDead).forEach(s => {
-                s.position.z += 10.0 * dt;
-                s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.6;
+    // Vehicle AI updates
+    if (gameFuelTruck) {
+        if (gameFuelTruck.leaving) {
+            gameFuelTruck.position.z += 30.0 * dt;
+            gameFuelTruck.position.y = getTerrainHeight(gameFuelTruck.position.x, gameFuelTruck.position.z) + 1.5;
+            if (gameFuelTruck.position.z > d9Root.position.z + 200) gameFuelTruck = null;
+        }
+    }
+
+    if (gameTank && !gameWon) {
+        if (gameTank.position.z < d9Root.position.z - 20) {
+            gameTank.position.z += 5.0 * dt;
+        }
+        if (Math.random() < 0.2) {
+            spawnDirt(new Vector3(gameTank.position.x, gameTank.position.y + 3.0, gameTank.position.z - 2.0));
+            let smoke = dirtBoxes[dirtBoxes.length-1];
+            smoke.color = [0.1, 0.1, 0.1, 0.8];
+            smoke.scale.set(0.5, 0.5, 0.5);
+            smoke.isSmoke = true;
+            smoke.life = 2.0;
+        }
+        if (timestamp - gameTank.lastFire > 2000) {
+            gameTank.lastFire = timestamp;
+            if (gameTank.muzzleFlashNode) {
+                gameTank.muzzleFlashNode.color[3] = 1.0;
+                setTimeout(() => { if (gameTank && gameTank.muzzleFlashNode) gameTank.muzzleFlashNode.color[3] = 0.0; }, 100);
+            }
+        }
+        gameTank.position.y = getTerrainHeight(gameTank.position.x, gameTank.position.z) + 1.5;
+    }
+
+    if (chainedVehicle) {
+        let shankPos = ripperNode.getGlobalPosition(d9Root.matrix);
+        let diff = new Vector3().copy(chainedVehicle.position).sub(shankPos);
+        let dist = diff.length();
+        if (dist > CHAIN_LENGTH) {
+            diff.normalize();
+            chainedVehicle.position.copy(shankPos).add(diff.multiplyScalar(CHAIN_LENGTH));
+        }
+        chainedVehicle.position.y = getTerrainHeight(chainedVehicle.position.x, chainedVehicle.position.z) + 1.5;
+    }
+
+    soldiers.forEach(s => {
+        if (s.isEnemy && !s.isDead && gameTank && s.position.distanceTo(gameTank.position) < 30.0) {
+            let nearestBuilding = null;
+            let minDist = 999;
+            sceneBuildings.forEach(h => {
+                let d = s.position.distanceTo(h.position);
+                if (d < minDist && d < 40.0 && !h.isDestroyed) { minDist = d; nearestBuilding = h; }
             });
-            return;
-        }
-
-        // Count squished enemies
-        let totalEnemies = soldiers.filter(s => s.isEnemy).length;
-        let deadEnemies = soldiers.filter(s => s.isEnemy && s.isDead).length;
-
-        // Friendly Tank AI Combat Logic
-        if (gameTank && !gameWon) {
-            // Tank follows D9 loosely but stays behind
-            let targetZ = d9Root.position.z - 15;
-            if (gameTank.position.z < targetZ) {
-                gameTank.position.z += 5.0 * dt;
-            }
-
-            // Randomly shoot at living enemies ahead
-            let aliveEnemies = soldiers.filter(s => s.isEnemy && !s.isDead && s.position.z > gameTank.position.z);
-            if (aliveEnemies.length > 0 && Math.random() < 0.05) { // 5% chance per frame to shoot
-                let target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-
-                // Gunfire flash & massive smoke at barrel tip
-                let barrelTip = new Vector3(gameTank.position.x, gameTank.position.y + 2.6, gameTank.position.z + 4);
-                spawnSmokeEffect(barrelTip, 2.0, 10);
-
-                // Destroy enemy instantly
-                target.isDead = true;
-                target.state = "SQUISHED";
-                target.children[0].color = [0.8, 0.1, 0.1, 1.0];
-                target.children[1].color = [0.8, 0.1, 0.1, 1.0];
-                target.scale.set(1.5, 0.05, 1.5);
-                target.position.y = getTerrainHeight(target.position.x, target.position.z) + 0.05;
-
-                // Also spawn smoke at enemy location
-                spawnSmokeEffect(target.position, 1.0, 5);
+            if (nearestBuilding) {
+                let toH = new Vector3().copy(nearestBuilding.position).sub(s.position);
+                toH.y = 0;
+                if (toH.length() > 2.0) {
+                    toH.normalize();
+                    s.position.add(toH.multiplyScalar(4.0 * dt));
+                }
             }
         }
+        s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.9;
+    });
 
-        if (gameAPC) {
-            let targetZ = d9Root.position.z - 20;
-            if (gameAPC.position.z < targetZ) {
-                gameAPC.position.z += 6.0 * dt;
-            }
+    // Check Win Condition
+    let remain = 0;
+    if (currentMissionType === 1) {
+        for(let d of dirtBoxes) {
+            if (d.position.z > 0 && Math.abs(d.position.x) < 5) remain++;
         }
-
-        let pct = Math.max(0, Math.min(100, (deadEnemies / totalEnemies) * 100));
-        uiFill.style.width = pct + "%";
-
-        if (deadEnemies >= totalEnemies) {
-            gameWon = true;
-            uiText.innerText = "Ambush cleared! Convoy advancing!";
-            uiText.style.color = "#44ff44";
-            document.getElementById("objectiveUI").classList.add("success-pulse");
-            uiFill.style.width = "100%";
-            advanceLevel();
-        } else {
-            uiText.innerText = `Mission ${currentLevel}: Squish the ambush! (${totalEnemies - deadEnemies} enemies remain)`;
-            uiText.style.color = "#fff";
-        }
-    }
-}
-
-function createBuilding(name, width, height, depth, x, z, color) {
-    let b = new Node(name);
-    b.scale.set(width, height, depth);
-    // Position y based on terrain height so it sits properly
-    let terrainY = getTerrainHeight(x, z);
-    b.position.set(x, terrainY + height / 2, z);
-    b.color = color;
-    b.isBuilding = true;
-    b.health = 100;
-    b.maxHealth = 100;
-
-    // Create some windows
-    let numWindowsX = Math.max(1, Math.floor(width / 3));
-    let numWindowsY = Math.max(1, Math.floor(height / 4));
-
-    for (let wy = 0; wy < numWindowsY; wy++) {
-        for (let wx = 0; wx < numWindowsX; wx++) {
-            // Front windows
-            let winF = new Node("WindowF");
-            winF.scale.set(1.5, 2, 0.2);
-            // Local space relative to building
-            let lx = -width/2 + (width / numWindowsX) * (wx + 0.5);
-            let ly = -height/2 + 3 + (height / numWindowsY) * wy;
-            winF.position.set(lx, ly, depth/2 + 0.1);
-            winF.color = [0.2, 0.2, 0.4, 1.0]; // Dark window color
-            b.add(winF);
-
-            // Back windows
-            let winB = new Node("WindowB");
-            winB.scale.set(1.5, 2, 0.2);
-            winB.position.set(lx, ly, -depth/2 - 0.1);
-            winB.color = [0.2, 0.2, 0.4, 1.0];
-            b.add(winB);
-        }
+        if (remain === 0 && !gameWon) advanceLevel();
     }
 
-    // Single Door
-    let door = new Node("Door");
-    door.scale.set(2, 3, 0.3);
-    door.position.set(0, -height/2 + 1.5, depth/2 + 0.1);
-    door.color = [0.3, 0.2, 0.1, 1.0]; // Brown door
-    b.add(door);
+    // UI Updates
+    document.getElementById("gaugeSpeed").style.width = Math.min(100, Math.abs(d9Velocity) * 10) + "%";
+    document.getElementById("gaugeRPM").style.width = Math.min(100, Math.abs(d9Velocity) * 8 + 20) + "%";
+    document.getElementById("gaugeHeat").style.width = engineHeat + "%";
+    document.getElementById("gaugeFuel").style.width = engineFuel + "%";
 
-    return b;
+    render();
+    updateMinimap();
+
+    lastTime = timestamp;
+    requestAnimationFrame(gameLoop);
 }
 
-function buildScenery() {
-    let buildings = [];
+function updateMinimap() {
+    let canvas = document.getElementById("minimapCanvas");
+    if (!canvas) return;
+    let ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // --- Add Blocking Objects (Concrete Slabs, Metal Rods) ---
-    // Placed between buildings or in paths to act as large, solid obstacles
-    let block1 = new Node("ConcreteBlock");
-    block1.scale.set(6, 2, 2);
-    let by1 = getTerrainHeight(-40, 27) + 1; // Exactly on ground
-    block1.position.set(-40, by1, 27);
-    block1.color = [0.5, 0.5, 0.5, 1.0];
-    buildings.push(block1);
+    let mapScale = 1.3;
+    let offsetX = canvas.width / 2;
+    let offsetY = canvas.height / 2;
 
-    let block2 = new Node("MetalRod");
-    block2.scale.set(0.5, 0.5, 10);
-    let by2 = getTerrainHeight(-10, 30) + 0.25;
-    block2.position.set(-10, by2, 30);
-    block2.color = [0.3, 0.2, 0.1, 1.0];
-    block2.rotation.y = 0.5;
-    buildings.push(block2);
+    if (!d9Root) return;
+    let px = -d9Root.position.x * mapScale + offsetX;
+    let pz = -d9Root.position.z * mapScale + offsetY;
 
-    let block3 = new Node("FallenPillar");
-    block3.scale.set(1.5, 1.5, 8);
-    let by3 = getTerrainHeight(20, -10) + 0.75;
-    block3.position.set(20, by3, -10);
-    block3.color = [0.7, 0.7, 0.6, 1.0];
-    block3.rotation.y = -0.3;
-    buildings.push(block3);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    sceneBuildings.forEach(b => {
+        if (!b.isDestroyed) ctx.fillRect(px + b.position.x * mapScale - 2, pz + b.position.z * mapScale - 2, 4, 4);
+    });
 
+    ctx.fillStyle = "#8B4513";
+    dirtBoxes.forEach(d => {
+        if (!d.isSmoke) ctx.fillRect(px + d.position.x * mapScale, pz + d.position.z * mapScale, 1.5, 1.5);
+    });
 
-    // The Main Hospital
-    let hospital = createBuilding("Hospital", 15, 20, 15, -25, 20, [0.8, 0.8, 0.9, 1.0]);
-    // Add Medical Cross to Hospital
-    let crossH = new Node("CrossH");
-    crossH.scale.set(3, 1, 0.5);
-    crossH.position.set(0, 5, 15/2 + 0.3); // relative to hospital, pop out front
-    crossH.color = [0.9, 0.1, 0.1, 1.0];
-    hospital.add(crossH);
-    let crossV = new Node("CrossV");
-    crossV.scale.set(1, 3, 0.5);
-    crossV.position.set(0, 5, 15/2 + 0.3);
-    crossV.color = [0.9, 0.1, 0.1, 1.0];
-    hospital.add(crossV);
-    buildings.push(hospital);
+    ctx.fillStyle = "red";
+    soldiers.forEach(s => {
+        if (s.isEnemy && !s.isDead) {
+            ctx.beginPath();
+            ctx.arc(px + s.position.x * mapScale, pz + s.position.z * mapScale, 2, 0, Math.PI*2);
+            ctx.fill();
+        }
+    });
 
-    // Mini City blocks
-    buildings.push(createBuilding("Apt1", 10, 30, 10, -45, 15, [0.7, 0.6, 0.5, 1.0]));
-    buildings.push(createBuilding("Apt2", 12, 15, 12, -35, 40, [0.5, 0.6, 0.7, 1.0]));
-    buildings.push(createBuilding("Office1", 15, 40, 15, -60, 25, [0.3, 0.4, 0.5, 1.0]));
-    buildings.push(createBuilding("Warehouse", 25, 10, 20, 30, -30, [0.8, 0.7, 0.6, 1.0]));
-    buildings.push(createBuilding("Tower", 8, 50, 8, 45, 15, [0.2, 0.2, 0.3, 1.0]));
-    buildings.push(createBuilding("RuinedBlock", 12, 8, 12, 15, 45, [0.4, 0.4, 0.4, 1.0]));
-
-    return buildings;
+    ctx.save();
+    ctx.translate(px + d9Root.position.x * mapScale, pz + d9Root.position.z * mapScale);
+    ctx.rotate(d9Root.rotation.y);
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.moveTo(0, -5);
+    ctx.lineTo(3, 3);
+    ctx.lineTo(-3, 3);
+    ctx.fill();
+    ctx.restore();
 }
+
+function render() {
+    gl.clearColor(0.5, 0.7, 1.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    let viewMatrix = new Matrix4();
+    let projectionMatrix = new Matrix4().makePerspective(Math.PI / 4, gl.canvas.width / gl.canvas.height, 0.1, 1000.0);
+
+    // Camera
+    let camOffset = new Vector3(Math.sin(d9Root.rotation.y) * -20, 10, Math.cos(d9Root.rotation.y) * -20);
+    let cameraPos = new Vector3().copy(d9Root.position).add(camOffset);
+    let targetPos = new Vector3().copy(d9Root.position);
+    targetPos.y += 2.0;
+
+    let terrainHeightAtCamera = getTerrainHeightBase(cameraPos.x, cameraPos.z);
+    if (cameraPos.y < terrainHeightAtCamera + 0.5) cameraPos.y = terrainHeightAtCamera + 0.5;
+
+    viewMatrix.makeLookAt(cameraPos, targetPos, new Vector3(0,1,0));
+
+    if (d9Root) {
+        gl.useProgram(program);
+        d9Root.draw(gl, program, viewMatrix, projectionMatrix);
+    }
+
+    dirtBoxes.forEach(d => d.draw(gl, program, viewMatrix, projectionMatrix));
+    sceneBuildings.forEach(b => { b.updateMatrix(null); b.draw(gl, program, viewMatrix, projectionMatrix); });
+    soldiers.forEach(s => { s.updateMatrix(null); s.draw(gl, program, viewMatrix, projectionMatrix); });
+
+    if (gameTank) { gameTank.updateMatrix(null); gameTank.draw(gl, program, viewMatrix, projectionMatrix); }
+    if (gameFuelTruck) { gameFuelTruck.updateMatrix(null); gameFuelTruck.draw(gl, program, viewMatrix, projectionMatrix); }
+
+    // Ground Plane
+    let groundScale = 100;
+    let groundMat = new Matrix4().makeScale(groundScale, 0.1, groundScale).multiply(new Matrix4().makeTranslation(0, -0.05, 0));
+    let groundModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, groundMat);
+    let groundNormalMatrix = new Matrix4().copy(groundModelViewMatrix);
+
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, groundModelViewMatrix.elements);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, groundNormalMatrix.elements);
+    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), [0.3, 0.5, 0.2, 1.0]);
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
+    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+}
+
+window.onload = () => {
+    initWebGL();
+    buildD9();
+    initParticles();
+
+    document.getElementById("startBtn").addEventListener("click", () => {
+        document.getElementById("mainMenu").style.display = "none";
+        document.getElementById("hud").style.display = "block";
+        document.getElementById("minimapContainer").style.display = "block";
+        loadLevel(1);
+        requestAnimationFrame(gameLoop);
+    });
+
+    document.getElementById("helpBtn").addEventListener("click", () => {
+        document.getElementById("helpMenu").style.display = "flex";
+    });
+    document.getElementById("closeHelpBtn").addEventListener("click", () => {
+        document.getElementById("helpMenu").style.display = "none";
+    });
+
+    document.getElementById("nextLevelBtn").addEventListener("click", () => {
+        document.getElementById("levelCompleteMenu").style.display = "none";
+        document.getElementById("nextLevelBtn").style.display = "none";
+        document.getElementById("refuelStats").innerHTML = `<p style="font-size: 20px; color: yellow;">Reward: <span style="font-weight: bold;">+50 Elite Coffee</span> <svg width="24" height="24" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;"><rect x="10" y="20" width="80" height="90" rx="5" fill="#C1121F"/><rect x="10" y="20" width="80" height="20" fill="#1A1A1A"/><path d="M10 20 Q 50 10 90 20 Z" fill="#1A1A1A"/><path d="M30 60 L50 45 L70 60 L60 85 L40 85 Z" fill="#FDF0D5"/><rect x="10" y="40" width="80" height="4" fill="#1A1A1A"/><rect x="10" y="100" width="80" height="4" fill="#1A1A1A"/></svg></p><p id="truckStatus">The Fuel Truck (Oshkosh) is arriving...</p>`;
+        gameFuelTruck = null;
+        loadLevel(currentLevel + 1);
+    });
+
+    document.getElementById("closeGarageBtn").addEventListener("click", closeGarage);
+};
