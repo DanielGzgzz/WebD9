@@ -418,6 +418,66 @@ function initBuffers(gl) {
     indexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+    // --- Generate Wavy Ground Mesh ---
+    const size = 100;
+    const segments = 50;
+    const halfSize = size / 2;
+    const segmentSize = size / segments;
+
+    let groundPositions = [];
+    let groundNormals = [];
+    let groundIndices = [];
+
+    for (let i = 0; i <= segments; i++) {
+        let z = (i * segmentSize) - halfSize;
+        for (let j = 0; j <= segments; j++) {
+            let x = (j * segmentSize) - halfSize;
+            let y = Math.sin(x * 0.1) * 2.0 + Math.cos(z * 0.1) * 2.0;
+
+            groundPositions.push(x, y, z);
+
+            // Analytical derivatives for normal
+            // f(x,z) = 2*sin(0.1*x) + 2*cos(0.1*z)
+            // df/dx = 0.2 * cos(0.1*x)
+            // df/dz = -0.2 * sin(0.1*z)
+            let dx = 0.2 * Math.cos(x * 0.1);
+            let dz = -0.2 * Math.sin(z * 0.1);
+
+            // Normal vector is (-df/dx, 1, -df/dz) normalized
+            let nx = -dx;
+            let ny = 1.0;
+            let nz = -dz;
+            let len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+            groundNormals.push(nx/len, ny/len, nz/len);
+        }
+    }
+
+    for (let i = 0; i < segments; i++) {
+        for (let j = 0; j < segments; j++) {
+            let a = i * (segments + 1) + j;
+            let b = a + 1;
+            let c = (i + 1) * (segments + 1) + j;
+            let d = c + 1;
+
+            groundIndices.push(a, c, b);
+            groundIndices.push(b, c, d);
+        }
+    }
+
+    groundIndexCount = groundIndices.length;
+
+    groundPositionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, groundPositionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundPositions), gl.STATIC_DRAW);
+
+    groundNormalBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, groundNormalBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(groundNormals), gl.STATIC_DRAW);
+
+    groundIndexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(groundIndices), gl.STATIC_DRAW);
 }
 
 
@@ -1530,32 +1590,27 @@ function render(now) {
         b.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
-    // Ground plane (just a big flat box)
-    let groundScale = 100;
-    let groundMat = new Matrix4().makeScale(groundScale, 0.1, groundScale).multiply(new Matrix4().makeTranslation(0, -0.05, 0));
-    let groundColor = [0.3, 0.5, 0.2, 1.0]; // Grass green
-
-    let groundModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, groundMat);
-    let groundNormalMatrix = new Matrix4().copy(groundModelViewMatrix);
+    // --- Draw Wavy Ground Plane ---
+    // Uses the newly generated ground buffers rather than the scaled default cube
+    let groundModelViewMatrix = new Matrix4().copy(viewMatrix); // World coordinates
+    let groundNormalMatrix = new Matrix4().copy(viewMatrix);
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, groundModelViewMatrix.elements);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, groundNormalMatrix.elements);
-    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), groundColor);
+    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), [0.3, 0.5, 0.2, 1.0]);
+    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1); // Keep grid shader flag on
 
-    // Enable procedural grid shader logic
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, groundPositionBuffer);
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.bindBuffer(gl.ARRAY_BUFFER, groundNormalBuffer);
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
+    gl.drawElements(gl.TRIANGLES, groundIndexCount, gl.UNSIGNED_SHORT, 0);
 
     // Road plane overlay
     gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
