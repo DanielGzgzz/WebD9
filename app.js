@@ -869,8 +869,8 @@ function updateKinematics(dt) {
         pitchShake = (Math.random() - 0.5) * 0.05; // +/- 0.025 rad pitch
     }
 
-    let heightFront = getTerrainHeight(frontTrackX, frontTrackZ);
-    let heightBack = getTerrainHeight(backTrackX, backTrackZ);
+    let heightFront = getTerrainHeightBase(frontTrackX, frontTrackZ);
+    let heightBack = getTerrainHeightBase(backTrackX, backTrackZ);
 
     // Desired base height (average of front and back tracks)
     let targetY = (heightFront + heightBack) / 2 + 1; // +1 for chassis center offset from ground
@@ -886,8 +886,8 @@ function updateKinematics(dt) {
     let rightTrackX = d9Root.position.x + Math.cos(d9Root.rotation.y) * (trackWidth / 2);
     let rightTrackZ = d9Root.position.z - Math.sin(d9Root.rotation.y) * (trackWidth / 2);
 
-    let heightLeft = getTerrainHeight(leftTrackX, leftTrackZ);
-    let heightRight = getTerrainHeight(rightTrackX, rightTrackZ);
+    let heightLeft = getTerrainHeightBase(leftTrackX, leftTrackZ);
+    let heightRight = getTerrainHeightBase(rightTrackX, rightTrackZ);
 
     // Negative roll because positive Z rotation raises the right side
     let targetRoll = -Math.atan2(heightLeft - heightRight, trackWidth);
@@ -903,11 +903,9 @@ function updateKinematics(dt) {
         d9VelocityY = 0; // stop falling
 
         // Match pitch to terrain only if grounded
-        // Positive velocity diff means accelerating forward (lean backward slightly)
-        let accelLean = (targetVelocity - d9Velocity) * 0.01;
         // Interpolate pitch to target
         d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt; // Smoother pitch interpolation
-        d9Root.rotation.x += accelLean + pitchShake; // add weak accel lean and shake
+        d9Root.rotation.x += pitchShake; // add shake
 
         // Interpolate roll to target
         d9Root.rotation.z += (targetRoll - d9Root.rotation.z) * 5 * dt;
@@ -1455,7 +1453,15 @@ function render(now) {
         Math.sin(cameraPitch) * distance + 2, // Base height offset
         -Math.cos(d9Root.rotation.y) * Math.cos(cameraPitch) * distance
     );
-    let cameraPos = new Vector3().copy(d9Root.position).add(cameraOffset);
+    let targetCameraPos = new Vector3().copy(d9Root.position).add(cameraOffset);
+    if (typeof window.currentCameraPos === 'undefined') {
+        window.currentCameraPos = targetCameraPos.clone();
+    } else {
+        window.currentCameraPos.x += (targetCameraPos.x - window.currentCameraPos.x) * 15 * dt;
+        window.currentCameraPos.y += (targetCameraPos.y - window.currentCameraPos.y) * 15 * dt;
+        window.currentCameraPos.z += (targetCameraPos.z - window.currentCameraPos.z) * 15 * dt;
+    }
+    let cameraPos = window.currentCameraPos;
     let targetPos = new Vector3().copy(d9Root.position);
     let up = new Vector3(0, 1, 0);
 
@@ -1837,18 +1843,13 @@ const RAMP_END = 25;
 const RAMP_HEIGHT = 4.0;
 const RAMP_WIDTH = 8.0;
 
+function getTerrainHeightBase(x, z) {
+    // Generate uneven terrain
+    return Math.sin(x*0.1) * 2.0 + Math.cos(z*0.1) * 2.0;
+}
+
 function getTerrainHeight(x, z) {
-    let baseH = 0;
-    if (Math.abs(x) <= RAMP_WIDTH / 2) {
-        if (z > RAMP_START && z < RAMP_END) {
-            // Slope up from START to END
-            let progress = (z - RAMP_START) / (RAMP_END - RAMP_START);
-            baseH = progress * RAMP_HEIGHT;
-        } else if (z >= RAMP_END && z < RAMP_END + 5) {
-            // Flat top before drop
-            baseH = RAMP_HEIGHT;
-        }
-    }
+    let baseH = getTerrainHeightBase(x, z);
 
     // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over
     let gridKey = getGridKey(x, z);
@@ -1856,20 +1857,14 @@ function getTerrainHeight(x, z) {
         let nearby = debrisGrid.get(gridKey);
         let maxPileHeight = baseH;
         for(let dirt of nearby) {
-            // Ignore blocks currently in the air or moving fast
             if (!dirt.isSleeping) continue;
-
-            // We only care about the top of the block, not its center position
             let dirtTopY = dirt.position.y + (dirt.scale.y / 2);
             if (dirtTopY > maxPileHeight) {
                 maxPileHeight = dirtTopY;
             }
         }
-        if (maxPileHeight > baseH + 0.5) {
-            return maxPileHeight;
-        }
+        if (maxPileHeight > baseH + 0.5) return maxPileHeight;
     }
-
     return baseH;
 }
 
