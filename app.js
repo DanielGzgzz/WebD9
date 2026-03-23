@@ -509,7 +509,7 @@ let d9Root;
 let d9BladeArms;
 let d9Blade;
 let d9Exhaust;
-let d9Ripper;
+
 
 let d9TreadsLeft = [];
 let d9TreadsRight = [];
@@ -700,23 +700,7 @@ function buildD9() {
     bladeBottom.color = darkGray;
     d9Blade.add(bladeBottom);
 
-    // Child 5: Rear Ripper Shank
-    d9Ripper = new Node("Ripper");
-    d9Ripper.position.set(0, 0, -1.8); // Back of chassis
-    d9Root.add(d9Ripper);
 
-    let ripperArm = new Node("RipperArm");
-    ripperArm.scale.set(0.6, 0.4, 1.2);
-    ripperArm.position.set(0, 0, -0.6);
-    ripperArm.color = yellow;
-    d9Ripper.add(ripperArm);
-
-    let ripperShank = new Node("RipperShank");
-    ripperShank.scale.set(0.2, 1.5, 0.4);
-    ripperShank.position.set(0, -0.8, -1.0);
-    ripperShank.rotation.x = 0.2; // Pointed down and forward
-    ripperShank.color = darkGray;
-    d9Ripper.add(ripperShank);
 }
 
 
@@ -977,17 +961,9 @@ function updateKinematics(dt) {
         d9BladeArms.rotation.x += bladeSpeed;
     }
 
-    // ; / ' : Raise/Lower Ripper (Rotation X on d9Ripper)
-    if (keys[';'] || keys[':']) {
-        d9Ripper.rotation.x -= bladeSpeed;
-    }
-    if (keys['\''] || keys['"']) {
-        d9Ripper.rotation.x += bladeSpeed;
-    }
-
-    // Clamp blade and ripper rotation to realistic limits
+    // Clamp blade rotation to realistic limits
     d9BladeArms.rotation.x = Math.max(-0.4, Math.min(0.2, d9BladeArms.rotation.x));
-    d9Ripper.rotation.x = Math.max(-0.5, Math.min(0.3, d9Ripper.rotation.x));
+
 
     // [ / ] : Camera Pitch (0 to 90 degrees)
     const pitchSpeed = 1.0 * dt;
@@ -1055,8 +1031,7 @@ function updateKinematics(dt) {
 
     if (chainedVehicle) {
         // Constrain chained vehicle distance
-        let shankPos = shank.getGlobalPosition(d9Root.matrix);
-        let diff = new Vector3().copy(chainedVehicle.position).sub(shankPos);
+        let diff = new Vector3().copy(chainedVehicle.position).sub(d9Root.position);
         let dist = diff.length();
         if (dist > CHAIN_LENGTH) {
             diff.normalize();
@@ -1266,44 +1241,6 @@ function updatePhysics(dt) {
         debrisGrid.get(key).push(dirt);
     }
 
-    // Update Ripper Matrix
-    let ripperWorldPos = new Vector3(0,0,0);
-    if (d9Ripper) {
-        d9Ripper.updateMatrix(d9Root.worldMatrix);
-        if (d9Ripper.children.length > 1) {
-            let shank = d9Ripper.children[1];
-            shank.updateMatrix(d9Ripper.worldMatrix);
-            ripperWorldPos = getMatrixTranslation(shank.worldMatrix);
-            // Move position to the bottom tip of the shank
-            ripperWorldPos.y -= 0.6;
-        } else {
-            ripperWorldPos = getMatrixTranslation(d9Ripper.worldMatrix);
-        }
-    }
-    let ripperSize = new Vector3(1.0, 1.5, 1.0);
-
-    // Spawn dirt chunks if ripper is lowered and moving forward
-    if (d9Ripper && d9Ripper.rotation.x > 0.15 && d9Velocity > 0.5) {
-        if (Math.random() < 0.4 && dirtBoxes.length < 500) {
-            let dirt = new Node("Soil");
-            let s = 0.2 + Math.random() * 0.3;
-            dirt.scale.set(s, s, s);
-            dirt.position.set(
-                ripperWorldPos.x + (Math.random() - 0.5) * 0.5,
-                getTerrainHeight(ripperWorldPos.x, ripperWorldPos.z) + 0.1,
-                ripperWorldPos.z + (Math.random() - 0.5) * 0.5
-            );
-            dirt.color = [0.4, 0.25, 0.15, 1.0]; // Dark brown soil
-            dirt.velocity = new Vector3(
-                -forward.x * 2.0 + (Math.random() - 0.5),
-                3.0 + Math.random() * 2.0,
-                -forward.z * 2.0 + (Math.random() - 0.5)
-            );
-            dirt.isSleeping = false;
-            dirt.radius = s * 0.6;
-            dirtBoxes.push(dirt);
-        }
-    }
 
     // 2. Physics & Collisions
     for (let dirt of dirtBoxes) {
@@ -1311,15 +1248,7 @@ function updatePhysics(dt) {
 
         // --- Blade Collision (Snowplow Effect) ---
         let hit = checkAABBCollision(dirt.position, dirtSize, bladeWorldPos, bladeSize);
-        let hitRipper = d9Ripper && checkAABBCollision(dirt.position, dirtSize, ripperWorldPos, ripperSize);
-
-        if (hitRipper) {
-            dirt.isSleeping = false;
-            // Pop dirt up slightly and drag it backwards along chassis path
-            dirt.velocity.y = 5.0;
-            dirt.velocity.x = -forward.x * 3.0 + (Math.random() - 0.5) * 2.0;
-            dirt.velocity.z = -forward.z * 3.0 + (Math.random() - 0.5) * 2.0;
-        } else if (hit) {
+        if (hit) {
             dirt.isSleeping = false;
 
             // Lift mechanic
