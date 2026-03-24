@@ -195,3 +195,119 @@ canvas {
     from { opacity: 0.7; transform: translate(-50%, -50%) scale(0.95); }
     to { opacity: 1.0; transform: translate(-50%, -50%) scale(1.05); }
 }
+#mainMenu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(30, 30, 30, 0.95);
+    color: white;
+    padding: 40px;
+    border-radius: 12px;
+    text-align: center;
+    border: 3px solid #ffcc00;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    z-index: 1000;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#mainMenu h1 {
+    color: #ffcc00;
+    margin-top: 0;
+    font-size: 32px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+#mainMenu p {
+    font-size: 16px;
+    margin-bottom: 30px;
+    color: #ccc;
+}
+
+#startBtn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 20px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    text-transform: uppercase;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+#startBtn:hover {
+    background-color: #45a049;
+    transform: scale(1.05);
+}
+
+#startBtn:active {
+    transform: scale(0.95);
+}
+#garageMenu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(30, 30, 30, 0.95);
+    color: white;
+    padding: 30px;
+    border-radius: 12px;
+    text-align: center;
+    border: 3px solid #ffaa00;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    z-index: 1000;
+    font-family: sans-serif;
+    min-width: 500px;
+}
+.upgrade-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin: 20px 0;
+}
+.upgrade-card {
+    background: #444;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #666;
+}
+.upgrade-card h3 {
+    margin-top: 0;
+    color: #ffaa00;
+}
+.upgrade-card button {
+    background: #ffaa00;
+    color: #111;
+    border: none;
+    padding: 8px 15px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+.upgrade-card button:hover {
+    background: #ffcc00;
+}
+.upgrade-card button:disabled {
+    background: #666;
+    color: #999;
+    cursor: not-allowed;
+}
+#closeGarageBtn {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 20px;
+}
+#closeGarageBtn:hover {
+    background-color: #45a049;
+}
