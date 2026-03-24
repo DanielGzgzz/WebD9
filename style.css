@@ -111,69 +111,87 @@ canvas {
     z-index: 50;
 }
 
+
 #dashboard {
     position: absolute;
     bottom: 20px;
     right: 20px;
-    background-color: rgba(30, 30, 30, 0.85);
+    background: rgba(30,30,30,0.8);
     padding: 15px;
-    border-radius: 8px;
+    border-radius: 10px;
     border: 2px solid #555;
+    z-index: 100;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 250px;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    pointer-events: none;
-    z-index: 50;
+    gap: 15px;
+    flex-direction: row;
+    width: auto;
 }
-
-#objectiveUI {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(40, 44, 52, 0.9);
-    padding: 20px;
-    border-radius: 12px;
-    color: #fff;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-    width: 280px;
-    border: 2px solid #ffcc00;
-    z-index: 60;
-}
-
 .gauge-container {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-}
-
-.gauge-label {
-    color: #ccc;
-    font-weight: bold;
-    font-size: 12px;
-    width: 50px;
-}
-
-.gauge-bar {
-    width: 180px;
-    height: 12px;
-    background-color: #222;
-    border: 1px solid #444;
-    border-radius: 6px;
     position: relative;
-    overflow: hidden;
+    width: 60px;
 }
-
-.gauge-fill {
-    height: 100%;
-    width: 0%;
-    transition: width 0.1s linear, background-color 0.1s linear;
+.gauge-label {
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    margin-top: 5px;
+    text-transform: uppercase;
 }
+.gauge-dial {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    background: conic-gradient(#444 0%, #111 0%);
+    border: 3px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+    position: relative;
+}
+.gauge-dial::after {
+    content: "";
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #222;
+    position: absolute;
+}
+.gauge-value {
+    position: absolute;
+    z-index: 2;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+/* Individual colors for conic gradients */
+#gaugeSpeed .gauge-dial { background: conic-gradient(#FF9800 var(--val), #111 0); }
+#gaugeRPM .gauge-dial { background: conic-gradient(#2196F3 var(--val), #111 0); }
+#gaugeHeat .gauge-dial { background: conic-gradient(#f44336 var(--val), #111 0); }
+#gaugeFuel .gauge-dial { background: conic-gradient(#4CAF50 var(--val), #111 0); }
+#gaugePSI .gauge-dial { background: conic-gradient(#9C27B0 var(--val), #111 0); }
 
-#gaugeSpeed { background-color: #4CAF50; }
-#gaugeRPM { background-color: #2196F3; }
-#gaugeHeat { background-color: #FF9800; }
-#gaugeFuel { background-color: #9C27B0; }
-#gaugePSI { background-color: #00BCD4; }
+#chainPrompt {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 215, 0, 0.9);
+    color: #111;
+    padding: 10px 20px;
+    font-size: 24px;
+    font-weight: bold;
+    border-radius: 8px;
+    border: 3px solid #FFF;
+    display: none;
+    z-index: 200;
+    pointer-events: none;
+    animation: chainPulse 1s infinite alternate;
+}
+@keyframes chainPulse {
+    from { opacity: 0.7; transform: translate(-50%, -50%) scale(0.95); }
+    to { opacity: 1.0; transform: translate(-50%, -50%) scale(1.05); }
+}

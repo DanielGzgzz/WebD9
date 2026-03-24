@@ -420,7 +420,7 @@ function initBuffers(gl) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 
     // --- Generate Wavy Ground Mesh ---
-    const size = 100;
+    const size = 300;
     const segments = 50;
     const halfSize = size / 2;
     const segmentSize = size / segments;
@@ -801,22 +801,32 @@ function updateDashboard(speed, rpm, psi) {
     let rpmEl = document.getElementById('gaugeRPM');
     let psiEl = document.getElementById('gaugePSI');
 
+    if(!heatEl || !fuelEl || !speedEl || !rpmEl || !psiEl) return;
+
     // Normalize logic for gauges
     let speedPct = Math.min(100, Math.abs(speed) / 15.0 * 100);
     let rpmPct = Math.min(100, rpm);
     let psiPct = Math.min(100, psi);
 
-    speedEl.style.width = speedPct + '%';
-    rpmEl.style.width = rpmPct + '%';
-    psiEl.style.width = psiPct + '%';
-    heatEl.style.width = engineHeat + '%';
-    fuelEl.style.width = engineFuel + '%';
+    speedEl.style.setProperty('--val', speedPct + '%');
+    let spdVal = speedEl.querySelector('.gauge-value');
+    if(spdVal) spdVal.innerText = Math.floor(speedPct);
 
-    // Red Zones logic
-    rpmEl.style.backgroundColor = rpmPct > 85 ? 'red' : '#2196F3';
-    heatEl.style.backgroundColor = engineHeat > 85 ? 'red' : '#FF9800';
-    psiEl.style.backgroundColor = psiPct > 85 ? 'red' : '#00BCD4';
-    fuelEl.style.backgroundColor = engineFuel < 15 ? 'red' : '#9C27B0';
+    rpmEl.style.setProperty('--val', rpmPct + '%');
+    let rpmVal = rpmEl.querySelector('.gauge-value');
+    if(rpmVal) rpmVal.innerText = Math.floor(rpmPct);
+
+    psiEl.style.setProperty('--val', psiPct + '%');
+    let psiVal = psiEl.querySelector('.gauge-value');
+    if(psiVal) psiVal.innerText = Math.floor(psiPct);
+
+    heatEl.style.setProperty('--val', engineHeat + '%');
+    let heatVal = heatEl.querySelector('.gauge-value');
+    if(heatVal) heatVal.innerText = Math.floor(engineHeat);
+
+    fuelEl.style.setProperty('--val', engineFuel + '%');
+    let fuelVal = fuelEl.querySelector('.gauge-value');
+    if(fuelVal) fuelVal.innerText = Math.floor(engineFuel);
 }
 
 function updateKinematics(dt) {
@@ -1053,7 +1063,7 @@ function updateKinematics(dt) {
             chainedVehicle = null; // Unchain
         } else {
             // Find closest vehicle
-            let vehicles = [gameTank, gameAPC, gameFuelTruck].filter(v => v !== null);
+            let vehicles = [...gameTanks, gameAPC, gameFuelTruck].filter(v => v !== null);
             let closest = null;
             let minDist = CHAIN_LENGTH * CHAIN_LENGTH;
             for (let v of vehicles) {
@@ -1069,22 +1079,82 @@ function updateKinematics(dt) {
         }
     }
 
+    // Dynamic Chaining UI Prompt
+    let promptEl = document.getElementById("chainPrompt");
+    if (promptEl) {
+        if (chainedVehicle) {
+            promptEl.style.display = "none";
+        } else {
+            let vehicles = [...gameTanks, gameAPC, gameFuelTruck].filter(v => v !== null);
+            let showPrompt = false;
+            let minDistSq = CHAIN_LENGTH * CHAIN_LENGTH;
+            let shankPos = getMatrixTranslation(d9Root.worldMatrix);
+            for (let v of vehicles) {
+                if (new Vector3().copy(v.position).sub(shankPos).lengthSq() < minDistSq) {
+                    showPrompt = true;
+                    break;
+                }
+            }
+            promptEl.style.display = showPrompt ? "block" : "none";
+        }
+    }
     // Chain Towing Logic & Fuel Truck Refueling
     if (gameFuelTruck) {
-        // Simple AI: drive towards D9 until close enough
+        if (typeof gameFuelTruck.aiState === 'undefined') gameFuelTruck.aiState = "arriving";
+
         let toD9 = new Vector3().copy(d9Root.position).sub(gameFuelTruck.position);
         let dist = toD9.length();
-        if (dist > 8.0) {
-            toD9.normalize();
-            gameFuelTruck.position.add(toD9.multiplyScalar(8.0 * dt)); // Drive speed
-            gameFuelTruck.rotation.y = Math.atan2(toD9.x, toD9.z);
-        } else {
-            // If near, rapidly refuel and cool down
-            engineFuel = Math.min(100, engineFuel + 20.0 * dt);
-            engineHeat = Math.max(0, engineHeat - 20.0 * dt);
+
+        if (gameFuelTruck.aiState === "arriving") {
+            if (dist > 8.0) {
+                toD9.normalize();
+                gameFuelTruck.position.x += toD9.x * 8.0 * dt;
+                gameFuelTruck.position.z += toD9.z * 8.0 * dt;
+                gameFuelTruck.rotation.y = Math.atan2(toD9.x, toD9.z);
+            } else {
+                gameFuelTruck.aiState = "refueling";
+                gameFuelTruck.refuelTimer = 0;
+            }
+        } else if (gameFuelTruck.aiState === "refueling") {
+            gameFuelTruck.refuelTimer += dt;
+            engineFuel += 10 * dt;
+            engineHeat -= 20 * dt;
+            if (engineFuel > 100) engineFuel = 100;
+            if (engineHeat < 0) engineHeat = 0;
             if (engineFuel > 15 && engineHeat < 85) isEngineDead = false;
+
+            // Refuel for 3 seconds then leave
+            if (gameFuelTruck.refuelTimer > 3.0) {
+                gameFuelTruck.aiState = "reversing";
+                gameFuelTruck.reverseTimer = 0;
+            }
+        } else if (gameFuelTruck.aiState === "reversing") {
+            gameFuelTruck.reverseTimer += dt;
+            if (gameFuelTruck.reverseTimer < 1.5) {
+                // Reverse straight
+                gameFuelTruck.position.x -= Math.sin(gameFuelTruck.rotation.y) * 8.0 * dt;
+                gameFuelTruck.position.z -= Math.cos(gameFuelTruck.rotation.y) * 8.0 * dt;
+            } else if (gameFuelTruck.reverseTimer < 4.0) {
+                // Turn 180 degrees while reversing slowly
+                gameFuelTruck.position.x -= Math.sin(gameFuelTruck.rotation.y) * 4.0 * dt;
+                gameFuelTruck.position.z -= Math.cos(gameFuelTruck.rotation.y) * 4.0 * dt;
+                gameFuelTruck.rotation.y += Math.PI * 0.4 * dt;
+            } else {
+                gameFuelTruck.aiState = "leaving";
+            }
+        } else if (gameFuelTruck.aiState === "leaving") {
+            // Drive forward (now facing away)
+            gameFuelTruck.position.x += Math.sin(gameFuelTruck.rotation.y) * 20.0 * dt;
+            gameFuelTruck.position.z += Math.cos(gameFuelTruck.rotation.y) * 20.0 * dt;
+
+            if (dist > 150.0) {
+                gameFuelTruck = null; // Despawn
+            }
         }
-        gameFuelTruck.position.y = getTerrainHeight(gameFuelTruck.position.x, gameFuelTruck.position.z) + 1.5;
+
+        if (gameFuelTruck) {
+            gameFuelTruck.position.y = getTerrainHeightBase(gameFuelTruck.position.x, gameFuelTruck.position.z) + 1.5;
+        }
     }
 
     if (chainedVehicle) {
@@ -1255,7 +1325,8 @@ function updatePhysics(dt) {
             }
 
             // AI hiding behavior: if near tank, move to nearest building
-            if (s.isEnemy && !s.isDead && gameTank && s.position.distanceTo(gameTank.position) < 30.0) {
+            let tankNear = gameTanks.find(t => s.position.distanceTo(t.position) < 30.0);
+        if (s.isEnemy && !s.isDead && tankNear) {
                 let nearestBuilding = null;
                 let minDist = 999;
                 sceneBuildings.forEach(h => {
@@ -1563,10 +1634,7 @@ function render(now) {
         dirt.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
-    if (gameTank) {
-        gameTank.updateMatrix(null);
-        gameTank.draw(gl, program, viewMatrix, projectionMatrix);
-    }
+    gameTanks.forEach(t => { t.updateMatrix(null); t.draw(gl, program, viewMatrix, projectionMatrix); });
 
     if (gameFuelTruck) {
         gameFuelTruck.updateMatrix(null);
@@ -1723,6 +1791,25 @@ window.onload = () => {
 
 function loadLevel(levelIndex) {
     currentLevel = levelIndex;
+
+    // Generate Border Wall
+    sceneBuildings = [];
+
+    // Left Wall (long)
+    let wl = createBuilding("WallL", 10, 20, 200, -30, 80, [0.3, 0.3, 0.3, 1.0]);
+    wl.isDestroyed = false; // indestructible
+    sceneBuildings.push(wl);
+
+    // Right Wall (long)
+    let wr = createBuilding("WallR", 10, 20, 200, 30, 80, [0.3, 0.3, 0.3, 1.0]);
+    wr.isDestroyed = false;
+    sceneBuildings.push(wr);
+
+    // Front blockade (with gap at x=0)
+    let wf1 = createBuilding("WallF1", 100, 20, 10, -55, 30, [0.3, 0.3, 0.3, 1.0]);
+    let wf2 = createBuilding("WallF2", 100, 20, 10, 55, 30, [0.3, 0.3, 0.3, 1.0]);
+    sceneBuildings.push(wf1);
+    sceneBuildings.push(wf2);
     gameState = "PLAYING";
     gameWon = false;
 
@@ -1742,7 +1829,7 @@ function loadLevel(levelIndex) {
     sceneRamps = [];
     sceneBuildings = [];
     soldiers = [];
-    gameTank = null;
+    gameTanks = [];
     gameAPC = null;
     gameFuelTruck = null;
     initialDebrisInPath = 0;
@@ -1762,11 +1849,29 @@ function loadLevel(levelIndex) {
     currentMissionType = Math.floor(Math.random() * 3) + 1;
 
     if (currentMissionType === 1) {
-        initDirt_Level1();
         sceneRamps = buildRamp();
-        sceneBuildings = buildScenery();
-        gameTank = buildTank();
-        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the rubble blocking the road!`;
+        // Skip buildScenery because we built the border wall above
+        gameTanks = [];
+        for(let i=0; i<3; i++) {
+            let t = buildTank();
+            t.position.set((Math.random()-0.5)*10, 1.5, -20 - (i*15));
+            gameTanks.push(t);
+        }
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the wall gap!`;
+
+        dirtBoxes = [];
+        // Spawn dirt specifically blocking the gap between WallF1 and WallF2 (x=-5 to 5, z=28 to 32)
+        for(let i=0; i<40; i++) {
+            let d = new Node("Dirt");
+            let s = 1.5 + Math.random()*2.5; // Bigger blocks
+            d.scale.set(s,s,s);
+            d.position.set(-5 + Math.random()*10, 5, 28 + Math.random()*4);
+            d.color = [0.5, 0.4, 0.4, 1.0]; // Concrete colored rubble
+            d.velocity = new Vector3();
+            d.isSleeping = false;
+            d.radius = s*0.6;
+            dirtBoxes.push(d);
+        }
     } else if (currentMissionType === 2) {
         sceneRamps = buildRamp();
         sceneBuildings = buildScenery();
@@ -1783,8 +1888,12 @@ function loadLevel(levelIndex) {
     } else if (currentMissionType === 3) {
         sceneBuildings = buildScenery();
         gameAPC = buildAPC();
-        gameTank = buildTank();
-        gameTank.position.set(5, 1.5, -15);
+        gameTanks = [];
+        for(let i=0; i<3; i++) {
+            let t = buildTank();
+            t.position.set((Math.random()-0.5)*10, 1.5, -20 - (i*15));
+            gameTanks.push(t);
+        }
 
         for(let i = 0; i < 6; i++) {
             soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, -10 + Math.random()*5));
@@ -1955,7 +2064,7 @@ function buildRamp() {
 let sceneRamps = [];
 
 let sceneBuildings = [];
-let gameTank = null;
+let gameTanks = [];
 let gameAPC = null;
 let gameFuelTruck = null;
 let soldiers = [];
@@ -2140,6 +2249,100 @@ function buildTank() {
 function updateGameLogic(dt) {
     if (gameState !== "PLAYING") return;
 
+    // Convoy Patrol AI State Machine
+    for (let i = 0; i < gameTanks.length; i++) {
+        let t = gameTanks[i];
+
+        // Base convoy position (behind the D9)
+        let targetZ = d9Root.position.z - 20 - (i * 15);
+        let targetX = 0; // Center of road
+
+        // State machine: 0 = follow convoy, 1 = patrol left, 2 = patrol right
+        if (typeof t.aiState === 'undefined') {
+            t.aiState = 0;
+            t.stateTimer = Math.random() * 5.0;
+        }
+
+        t.stateTimer -= dt;
+        if (t.stateTimer <= 0) {
+            if (t.aiState === 0) {
+                t.aiState = Math.random() > 0.5 ? 1 : 2;
+                t.stateTimer = 4.0 + Math.random() * 3.0; // Patrol for 4-7 sec
+            } else {
+                t.aiState = 0;
+                t.stateTimer = 5.0 + Math.random() * 5.0; // Follow for 5-10 sec
+            }
+        }
+
+        if (t.aiState === 1) targetX = -20; // Patrol left
+        if (t.aiState === 2) targetX = 20;  // Patrol right
+
+        let tx = targetX - t.position.x;
+        let tz = targetZ - t.position.z;
+        let distToTarget = Math.sqrt(tx*tx + tz*tz);
+
+        if (distToTarget > 2.0 && !gameWon) {
+            let angle = Math.atan2(tx, tz);
+            let angleDiff = angle - t.rotation.y;
+            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+
+            t.rotation.y += angleDiff * 2.0 * dt;
+            t.position.x += Math.sin(t.rotation.y) * 12.0 * dt;
+            t.position.z += Math.cos(t.rotation.y) * 12.0 * dt;
+        } else if (gameWon) {
+            t.position.z += 25.0 * dt; // Push hard forward when level complete
+        }
+
+        // Emit smoke
+        if (Math.random() < 0.1) {
+            let smoke = new Node("Smoke");
+            smoke.position.set(t.position.x, t.position.y + 3.0, t.position.z - 2.0);
+            smoke.color = [0.1, 0.1, 0.1, 0.8]; // Black smoke
+            smoke.scale.set(0.5, 0.5, 0.5);
+            smoke.isSmoke = true;
+            smoke.life = 2.0;
+            dirtBoxes.push(smoke);
+        }
+
+        // Combat logic
+        let aliveEnemies = soldiers.filter(s => s.isEnemy && !s.isDead && s.position.distanceTo(t.position) < 50.0);
+        if (aliveEnemies.length > 0) {
+            let targetEnemy = aliveEnemies[0];
+            let tex = targetEnemy.position.x - t.position.x;
+            let tez = targetEnemy.position.z - t.position.z;
+
+            let turret = t.children.find(c => c.name === "TankTurret");
+            if (turret) {
+                turret.rotation.y = Math.atan2(tex, tez) - t.rotation.y;
+            }
+
+            // Firing
+            if (typeof t.lastFire === 'undefined') t.lastFire = 0;
+            if (typeof t.fireCooldown === 'undefined') t.fireCooldown = 0;
+            t.fireCooldown -= dt;
+            if (t.fireCooldown <= 0) {
+                t.fireCooldown = 2.0; // fire every 2 seconds
+                if (t.muzzleFlashNode) {
+                    t.muzzleFlashNode.color[3] = 1.0;
+                    let myFlash = t.muzzleFlashNode;
+                    setTimeout(() => { myFlash.color[3] = 0.0; }, 100);
+                }
+
+                targetEnemy.isDead = true;
+                targetEnemy.rotation.x = Math.PI / 2; // fall over
+                targetEnemy.position.y = getTerrainHeightBase(targetEnemy.position.x, targetEnemy.position.z) + 0.05;
+                spawnSmokeEffect(targetEnemy.position, 1.0, 5);
+            }
+        }
+
+        let ty = getTerrainHeightBase(t.position.x, t.position.z);
+        t.position.y += (ty + 1.5 - t.position.y) * 5 * dt;
+    }
+
+
+
+
     let uiText = document.getElementById("objectiveText");
     let uiFill = document.getElementById("progressFill");
 
@@ -2162,20 +2365,16 @@ function updateGameLogic(dt) {
 
     } else if (currentMissionType === 1) {
         if (gameWon) {
-            if (gameTank) {
-                gameTank.position.z += 25.0 * dt;
-                let ty = getTerrainHeight(gameTank.position.x, gameTank.position.z);
-                gameTank.position.y += (ty + 1.5 - gameTank.position.y) * 5 * dt;
-            }
+
             return;
         }
 
-        let currentDebrisInPath = 0;
-        for(let dirt of dirtBoxes) {
-            if (dirt.position.x > -5 && dirt.position.x < 5 && dirt.position.z > 12 && dirt.position.z < 28) {
-                currentDebrisInPath++;
-            }
+        let remain = 0;
+        for(let d of dirtBoxes) {
+            // Check if gap is clear (z=25 to 35, x=-10 to 10)
+            if (d.position.z > 25 && d.position.z < 35 && Math.abs(d.position.x) < 10) remain++;
         }
+        let currentDebrisInPath = remain;
 
         if (initialDebrisInPath === 0 && currentDebrisInPath > 0) {
             initialDebrisInPath = currentDebrisInPath;
@@ -2220,7 +2419,7 @@ function updateGameLogic(dt) {
     } else if (currentMissionType === 3) {
         if (gameWon) {
             if (gameAPC) gameAPC.position.z += 25.0 * dt;
-            if (gameTank) gameTank.position.z += 25.0 * dt;
+
 
             // Friendlies charge forward
             soldiers.filter(s => !s.isEnemy && !s.isDead).forEach(s => {
@@ -2235,34 +2434,7 @@ function updateGameLogic(dt) {
         let deadEnemies = soldiers.filter(s => s.isEnemy && s.isDead).length;
 
         // Friendly Tank AI Combat Logic
-        if (gameTank && !gameWon) {
-            // Tank follows D9 loosely but stays behind
-            let targetZ = d9Root.position.z - 15;
-            if (gameTank.position.z < targetZ) {
-                gameTank.position.z += 5.0 * dt;
-            }
 
-            // Randomly shoot at living enemies ahead
-            let aliveEnemies = soldiers.filter(s => s.isEnemy && !s.isDead && s.position.z > gameTank.position.z);
-            if (aliveEnemies.length > 0 && Math.random() < 0.05) { // 5% chance per frame to shoot
-                let target = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-
-                // Gunfire flash & massive smoke at barrel tip
-                let barrelTip = new Vector3(gameTank.position.x, gameTank.position.y + 2.6, gameTank.position.z + 4);
-                spawnSmokeEffect(barrelTip, 2.0, 10);
-
-                // Destroy enemy instantly
-                target.isDead = true;
-                target.state = "SQUISHED";
-                target.children[0].color = [0.8, 0.1, 0.1, 1.0];
-                target.children[1].color = [0.8, 0.1, 0.1, 1.0];
-                target.scale.set(1.5, 0.05, 1.5);
-                target.position.y = getTerrainHeight(target.position.x, target.position.z) + 0.05;
-
-                // Also spawn smoke at enemy location
-                spawnSmokeEffect(target.position, 1.0, 5);
-            }
-        }
 
         if (gameAPC) {
             let targetZ = d9Root.position.z - 20;

@@ -51,33 +51,37 @@
             <p><b>Up/Down:</b> Move Forward/Backward</p>
             <p><b>Left/Right:</b> Turn Left/Right</p>
             <p><b>&lt; / &gt; :</b> Raise/Lower Blade</p>
+            <p><b>; / ' :</b> Raise/Lower Ripper Shank</p>
             <p><b>[ / ] :</b> Camera Angle Up/Down</p>
             <p><b>C:</b> Chain/Unchain Vehicle</p>
             <p><b>F:</b> Request Fuel Truck</p>
             <p><b>G:</b> Open Garage Shop</p>
         </div>
         <div id="dashboard">
-            <div class="gauge-container">
+            <div class="gauge-container" id="gaugeSpeed" style="--val: 0%;">
+                <div class="gauge-dial"><span class="gauge-value">0</span></div>
                 <span class="gauge-label">SPEED</span>
-                <div class="gauge-bar"><div id="gaugeSpeed" class="gauge-fill"></div></div>
             </div>
-            <div class="gauge-container">
+            <div class="gauge-container" id="gaugeRPM" style="--val: 0%;">
+                <div class="gauge-dial"><span class="gauge-value">0</span></div>
                 <span class="gauge-label">RPM</span>
-                <div class="gauge-bar"><div id="gaugeRPM" class="gauge-fill"></div></div>
             </div>
-            <div class="gauge-container">
+            <div class="gauge-container" id="gaugeHeat" style="--val: 0%;">
+                <div class="gauge-dial"><span class="gauge-value">0</span></div>
                 <span class="gauge-label">HEAT</span>
-                <div class="gauge-bar"><div id="gaugeHeat" class="gauge-fill"></div></div>
             </div>
-            <div class="gauge-container">
+            <div class="gauge-container" id="gaugeFuel" style="--val: 100%;">
+                <div class="gauge-dial"><span class="gauge-value">100</span></div>
                 <span class="gauge-label">FUEL</span>
-                <div class="gauge-bar"><div id="gaugeFuel" class="gauge-fill"></div></div>
             </div>
-            <div class="gauge-container">
+            <div class="gauge-container" id="gaugePSI" style="--val: 0%;">
+                <div class="gauge-dial"><span class="gauge-value">0</span></div>
                 <span class="gauge-label">PSI</span>
-                <div class="gauge-bar"><div id="gaugePSI" class="gauge-fill"></div></div>
             </div>
         </div>
+
+        <div id="chainPrompt">[C] CHAIN VEHICLE</div>
+
         <div id="objectiveUI">
             <h2>Objective</h2>
             <p id="objectiveText">Clear the rubble blocking the road!</p>
