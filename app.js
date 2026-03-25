@@ -1357,6 +1357,7 @@ function updatePhysics(dt) {
             d.color[3] = Math.max(0, d.life / 2.0); // Fade out
             if (d.life <= 0) {
                 dirtBoxes.splice(i, 1);
+                continue;
             }
         }
     }
@@ -2301,6 +2302,7 @@ function updateGameLogic(dt) {
             smoke.color = [0.1, 0.1, 0.1, 0.8]; // Black smoke
             smoke.scale.set(0.5, 0.5, 0.5);
             smoke.isSmoke = true;
+            smoke.velocity = new Vector3(0, 0, 0);
             smoke.life = 2.0;
             dirtBoxes.push(smoke);
         }
