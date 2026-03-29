@@ -309,6 +309,9 @@ function initWebGL() {
     const canvas = document.getElementById('glcanvas');
     gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
+    // Enable 32-bit indices for large meshes
+    gl.getExtension('OES_element_index_uint');
+
     if (!gl) {
         alert('Unable to initialize WebGL. Your browser or machine may not support it.');
         return;
@@ -420,8 +423,8 @@ function initBuffers(gl) {
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
 
     // --- Generate Wavy Ground Mesh ---
-    const size = 300;
-    const segments = 50;
+    const size = 2400; // 8 times bigger
+    const segments = 400; // Increased segments for larger area
     const halfSize = size / 2;
     const segmentSize = size / segments;
 
@@ -477,7 +480,7 @@ function initBuffers(gl) {
 
     groundIndexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(groundIndices), gl.STATIC_DRAW);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(groundIndices), gl.STATIC_DRAW);
 }
 
 
@@ -582,44 +585,24 @@ const sprocketY = 0.5; // Top wheel
 const wheelR = 0.3;
 
 function buildTreads(parentNode, color) {
-    // Top elevated drive sprocket
-    let topWheel = new Node("TopWheel");
-    topWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    topWheel.position.set(0, sprocketY, -trackLength / 2 + 0.5);
-    topWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(topWheel);
-
-    // Front bottom idler
-    let frontWheel = new Node("FrontWheel");
-    frontWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    frontWheel.position.set(0, -trackHeight / 2 + wheelR, trackLength / 2);
-    frontWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(frontWheel);
-
-    // Rear bottom idler
-    let rearWheel = new Node("RearWheel");
-    rearWheel.scale.set(0.7, wheelR * 2, wheelR * 2);
-    rearWheel.position.set(0, -trackHeight / 2 + wheelR, -trackLength / 2);
-    rearWheel.color = [0.15, 0.15, 0.15, 1.0];
-    parentNode.add(rearWheel);
-
-    // Inner small rollers along the bottom
-    for(let w = 1; w < 4; w++) {
-        let roller = new Node("Roller" + w);
-        roller.scale.set(0.65, 0.3, 0.3);
-        let zPos = -trackLength/2 + (trackLength / 4) * w;
-        roller.position.set(0, -trackHeight / 2 + 0.15, zPos);
-        roller.color = [0.2, 0.2, 0.2, 1.0];
-        parentNode.add(roller);
-    }
+    // Note: The static wheels/rollers have been moved to buildTrackFrame for better styling.
+    // This function now only builds the individual moving track shoe/pad links.
 
     // Create individual treads
     let treadsArray = (parentNode.name === "TrackLeft") ? d9TreadsLeft : d9TreadsRight;
-    const numTreads = 30; // More treads for triangular shape
+    const numTreads = 36; // Increased density for smoother look
     for (let i = 0; i < numTreads; i++) {
         let tread = new Node("Tread" + i);
-        tread.scale.set(0.8, 0.1, 0.25);
-        tread.color = [0.05, 0.05, 0.05, 1.0];
+        tread.scale.set(1.1, 0.08, 0.3); // Wider, thinner, deeper tread pad
+        tread.color = color;
+
+        // Grouser bar (the raised cleat on the tread for traction)
+        let grouser = new Node("Grouser");
+        grouser.scale.set(1.1, 0.1, 0.05);
+        grouser.position.set(0, 0.04, 0); // raised slightly
+        grouser.color = [0.25, 0.25, 0.25, 1.0]; // Slightly lighter steel color
+        tread.add(grouser);
+
         parentNode.add(tread);
         treadsArray.push(tread);
     }
@@ -672,95 +655,395 @@ function updateTreadPositions(treadsArray, offset) {
 }
 
 function buildD9() {
-    // Colors
-    const yellow = [0.95, 0.76, 0.05, 1.0];
-    const darkGray = [0.2, 0.2, 0.2, 1.0];
-    const black = [0.1, 0.1, 0.1, 1.0];
+    // Colors based on real Caterpillar D9
+    const catYellow = [0.945, 0.768, 0.059, 1.0];
+    const catBlack = [0.12, 0.12, 0.12, 1.0];
+    const darkGray = [0.25, 0.25, 0.25, 1.0];
+    const lightGray = [0.6, 0.6, 0.6, 1.0];
+    const glassColor = [0.1, 0.3, 0.4, 0.8]; // Slightly transparent-looking blueish black
+    const silver = [0.8, 0.8, 0.85, 1.0];
+    const red = [0.8, 0.1, 0.1, 1.0]; // Tail lights / details
 
-    // Root: Chassis
+    // --- Root: Main Chassis Assembly ---
     d9Root = new Node("Chassis");
-    d9Root.scale.set(2, 1.5, 3.5); // Width, Height, Length
-    d9Root.position.set(0, 1, 0);
-    d9Root.color = yellow;
+    d9Root.position.set(0, 1.4, 0);
+    d9Root.isDrawable = false; // The root itself is a container
 
-    // Child 1: Tracks
+    // Main hull (the tub)
+    let mainHull = new Node("MainHull");
+    mainHull.scale.set(1.8, 1.2, 4.0);
+    mainHull.position.set(0, 0, 0);
+    mainHull.color = catYellow;
+    d9Root.add(mainHull);
+
+    // Belly pan (bottom armor)
+    let bellyPan = new Node("BellyPan");
+    bellyPan.scale.set(1.7, 0.2, 3.8);
+    bellyPan.position.set(0, -0.65, 0);
+    bellyPan.color = catBlack;
+    d9Root.add(bellyPan);
+
+    // Rear counterweight / transmission case
+    let rearCase = new Node("RearCase");
+    rearCase.scale.set(1.8, 1.4, 1.0);
+    rearCase.position.set(0, 0.1, -2.0);
+    rearCase.color = catYellow;
+    d9Root.add(rearCase);
+
+    let rearDrawbar = new Node("Drawbar");
+    rearDrawbar.scale.set(0.6, 0.4, 0.8);
+    rearDrawbar.position.set(0, -0.4, -2.5);
+    rearDrawbar.color = catBlack;
+    d9Root.add(rearDrawbar);
+
+    // --- Child 1: High-Drive Track System ---
+    // The D9 has a distinct elevated sprocket.
     let trackLeft = new Node("TrackLeft");
-    trackLeft.position.set(-1.4, -0.2, 0); // Local to chassis
+    trackLeft.position.set(-1.6, -0.4, 0); // Spread out wider
     d9Root.add(trackLeft);
 
     let trackRight = new Node("TrackRight");
-    trackRight.position.set(1.4, -0.2, 0);
+    trackRight.position.set(1.6, -0.4, 0);
     d9Root.add(trackRight);
 
-    buildTreads(trackLeft, black);
-    buildTreads(trackRight, black);
+    // Build the track frames and rollers first
+    buildTrackFrame(trackLeft, catBlack, catYellow);
+    buildTrackFrame(trackRight, catBlack, catYellow);
 
-    // Child 2: Cab/Engine
-    let cab = new Node("Cab");
-    cab.scale.set(1.5, 1.5, 1.5);
-    cab.position.set(0, 1.5, -0.5); // Towards the back
-    cab.color = yellow;
-    d9Root.add(cab);
+    // Then build the animated treads
+    buildTreads(trackLeft, catBlack);
+    buildTreads(trackRight, catBlack);
 
-    let engine = new Node("Engine");
-    engine.scale.set(1.2, 1.0, 1.8);
-    engine.position.set(0, 1.2, 1.2); // Towards the front
-    engine.color = yellow;
-    d9Root.add(engine);
+    // --- Child 2: Engine, Hood, and Radiator ---
+    let engineGroup = new Node("EngineGroup");
+    engineGroup.position.set(0, 0.6, 1.0);
+    engineGroup.isDrawable = false;
+    d9Root.add(engineGroup);
 
-    d9Exhaust = new Node("Exhaust");
-    d9Exhaust.scale.set(0.15, 1.0, 0.15);
-    d9Exhaust.position.set(0.4, 2.0, 1.5);
-    d9Exhaust.color = darkGray;
-    d9Root.add(d9Exhaust);
+    // Sloped engine hood
+    let hoodBase = new Node("HoodBase");
+    hoodBase.scale.set(1.4, 1.0, 2.2);
+    hoodBase.position.set(0, 0.5, 0);
+    hoodBase.color = catYellow;
+    engineGroup.add(hoodBase);
 
-    // Child 3: Blade Arms
+    let hoodTop = new Node("HoodTop");
+    hoodTop.scale.set(1.35, 0.2, 2.15);
+    hoodTop.position.set(0, 1.05, -0.025);
+    hoodTop.color = catBlack; // Anti-glare patch
+    engineGroup.add(hoodTop);
+
+    // Massive front radiator guard
+    let radiatorGuard = new Node("RadiatorGuard");
+    radiatorGuard.scale.set(1.5, 1.8, 0.4);
+    radiatorGuard.position.set(0, 0.4, 1.2);
+    radiatorGuard.rotation.x = -0.05; // Slight back lean
+    radiatorGuard.color = catYellow;
+    engineGroup.add(radiatorGuard);
+
+    let radiatorGrille = new Node("RadiatorGrille");
+    radiatorGrille.scale.set(1.2, 1.5, 0.1);
+    radiatorGrille.position.set(0, 0.4, 1.41);
+    radiatorGrille.color = catBlack;
+    engineGroup.add(radiatorGrille);
+
+    // Exhaust stacks (dual)
+    d9Exhaust = new Node("ExhaustGroup");
+    d9Exhaust.isDrawable = false;
+    engineGroup.add(d9Exhaust);
+
+    let exhaustLeft = new Node("ExhaustLeft");
+    exhaustLeft.scale.set(0.15, 1.2, 0.15);
+    exhaustLeft.position.set(-0.4, 1.5, 0.5);
+    exhaustLeft.color = darkGray;
+    d9Exhaust.add(exhaustLeft);
+
+    let exhaustRight = new Node("ExhaustRight");
+    exhaustRight.scale.set(0.15, 1.2, 0.15);
+    exhaustRight.position.set(0.4, 1.5, 0.5);
+    exhaustRight.color = darkGray;
+    d9Exhaust.add(exhaustRight);
+
+    // Air cleaners (cyclone filters)
+    let airCleanerLeft = new Node("AirCleanerL");
+    airCleanerLeft.scale.set(0.25, 0.6, 0.25);
+    airCleanerLeft.position.set(-0.5, 1.4, -0.2);
+    airCleanerLeft.color = catBlack;
+    engineGroup.add(airCleanerLeft);
+
+    let airCleanerRight = new Node("AirCleanerR");
+    airCleanerRight.scale.set(0.25, 0.6, 0.25);
+    airCleanerRight.position.set(0.5, 1.4, -0.2);
+    airCleanerRight.color = catBlack;
+    engineGroup.add(airCleanerRight);
+
+
+    // --- Child 3: Cab and ROPS (Roll-Over Protection Structure) ---
+    let cabGroup = new Node("CabGroup");
+    cabGroup.position.set(0, 1.2, -0.8);
+    cabGroup.isDrawable = false;
+    d9Root.add(cabGroup);
+
+    // Cab Base
+    let cabBase = new Node("CabBase");
+    cabBase.scale.set(1.6, 0.4, 1.6);
+    cabBase.position.set(0, 0, 0);
+    cabBase.color = catYellow;
+    cabGroup.add(cabBase);
+
+    // Main Cab Structure (Glass/Interior area)
+    let cabBody = new Node("CabBody");
+    cabBody.scale.set(1.4, 1.2, 1.4);
+    cabBody.position.set(0, 0.8, 0);
+    cabBody.color = glassColor;
+    cabGroup.add(cabBody);
+
+    // Cab Roof
+    let cabRoof = new Node("CabRoof");
+    cabRoof.scale.set(1.5, 0.15, 1.5);
+    cabRoof.position.set(0, 1.45, 0);
+    cabRoof.color = catYellow;
+    cabGroup.add(cabRoof);
+
+    // ROPS Pillars (The heavy rollover frame)
+    const ropsColor = catBlack;
+    let ropsFL = new Node("RopsFL");
+    ropsFL.scale.set(0.15, 1.6, 0.15);
+    ropsFL.position.set(-0.75, 0.8, 0.75);
+    ropsFL.color = ropsColor;
+    cabGroup.add(ropsFL);
+
+    let ropsFR = new Node("RopsFR");
+    ropsFR.scale.set(0.15, 1.6, 0.15);
+    ropsFR.position.set(0.75, 0.8, 0.75);
+    ropsFR.color = ropsColor;
+    cabGroup.add(ropsFR);
+
+    let ropsRL = new Node("RopsRL");
+    ropsRL.scale.set(0.2, 1.6, 0.2);
+    ropsRL.position.set(-0.75, 0.8, -0.75);
+    ropsRL.color = ropsColor;
+    cabGroup.add(ropsRL);
+
+    let ropsRR = new Node("RopsRR");
+    ropsRR.scale.set(0.2, 1.6, 0.2);
+    ropsRR.position.set(0.75, 0.8, -0.75);
+    ropsRR.color = ropsColor;
+    cabGroup.add(ropsRR);
+
+
+    // --- Child 4: Blade Lift Arms and Hydraulics ---
     d9BladeArms = new Node("BladeArms");
-    // Pivot point near the middle of chassis
-    d9BladeArms.position.set(0, 0, 0);
-    d9BladeArms.isDrawable = false; // Just a pivot group
+    // Pivot point near the middle/lower part of chassis (trunnions)
+    d9BladeArms.position.set(0, -0.8, 0);
+    d9BladeArms.isDrawable = false;
     d9Root.add(d9BladeArms);
 
+    // Main push arms (massive beams outside the tracks)
     let armLeft = new Node("ArmLeft");
-    armLeft.scale.set(0.2, 0.2, 3.5);
-    armLeft.position.set(-1.1, 0, 1.5); // Extend forward
-    armLeft.color = yellow;
+    armLeft.scale.set(0.3, 0.4, 4.5);
+    armLeft.position.set(-2.2, 0, 1.8);
+    armLeft.color = catYellow;
     d9BladeArms.add(armLeft);
 
     let armRight = new Node("ArmRight");
-    armRight.scale.set(0.2, 0.2, 3.5);
-    armRight.position.set(1.1, 0, 1.5);
-    armRight.color = yellow;
+    armRight.scale.set(0.3, 0.4, 4.5);
+    armRight.position.set(2.2, 0, 1.8);
+    armRight.color = catYellow;
     d9BladeArms.add(armRight);
 
-    // Child 4: Blade
-    d9Blade = new Node("Blade");
-    // Attach to the end of the arms
-    d9Blade.position.set(0, 0, 3.2);
-    d9Blade.isDrawable = false; // Group for blade parts
+    // Hydraulic Lift Cylinders (Visual only, attached to chassis and arms)
+    // Anchored high on the radiator guard, pushing down on the blade
+    let liftCylL = new Node("LiftCylL");
+    liftCylL.scale.set(0.2, 2.5, 0.2);
+    liftCylL.position.set(-0.9, 1.5, 3.2); // Positioned between chassis and arm
+    liftCylL.rotation.x = 0.5; // Angled forward
+    liftCylL.color = catYellow;
+    d9BladeArms.add(liftCylL); // Added to arms so it moves with blade for simplicity in this rig
+
+    let liftRodL = new Node("LiftRodL");
+    liftRodL.scale.set(0.1, 1.5, 0.1);
+    liftRodL.position.set(0, -1.0, 0);
+    liftRodL.color = silver;
+    liftCylL.add(liftRodL);
+
+    let liftCylR = new Node("LiftCylR");
+    liftCylR.scale.set(0.2, 2.5, 0.2);
+    liftCylR.position.set(0.9, 1.5, 3.2);
+    liftCylR.rotation.x = 0.5;
+    liftCylR.color = catYellow;
+    d9BladeArms.add(liftCylR);
+
+    let liftRodR = new Node("LiftRodR");
+    liftRodR.scale.set(0.1, 1.5, 0.1);
+    liftRodR.position.set(0, -1.0, 0);
+    liftRodR.color = silver;
+    liftCylR.add(liftRodR);
+
+
+    // --- Child 5: The U-Blade ---
+    d9Blade = new Node("BladeGroup");
+    // Attach to the front end of the push arms
+    d9Blade.position.set(0, 0.2, 4.2);
+    d9Blade.isDrawable = false;
     d9BladeArms.add(d9Blade);
 
-    let bladeCenter = new Node("BladeCenter");
-    bladeCenter.scale.set(3.5, 1.5, 0.2);
-    bladeCenter.position.set(0, 0, 0);
-    bladeCenter.color = darkGray;
-    d9Blade.add(bladeCenter);
+    // Main central moldboard (curved)
+    let bladeCenterMain = new Node("BladeCenterMain");
+    bladeCenterMain.scale.set(4.0, 1.2, 0.2);
+    bladeCenterMain.position.set(0, 0, 0);
+    bladeCenterMain.color = catBlack; // Working surface
+    d9Blade.add(bladeCenterMain);
 
-    let bladeTop = new Node("BladeTop");
-    bladeTop.scale.set(3.5, 0.4, 0.2);
-    bladeTop.position.set(0, 0.8, -0.1);
-    bladeTop.rotation.x = -0.3; // Curve forward slightly
-    bladeTop.color = darkGray;
-    d9Blade.add(bladeTop);
+    let bladeCenterTop = new Node("BladeCenterTop");
+    bladeCenterTop.scale.set(4.0, 0.8, 0.2);
+    bladeCenterTop.position.set(0, 0.9, -0.2);
+    bladeCenterTop.rotation.x = -0.4; // Curve forward over the top
+    bladeCenterTop.color = catBlack;
+    d9Blade.add(bladeCenterTop);
 
-    let bladeBottom = new Node("BladeBottom");
-    bladeBottom.scale.set(3.5, 0.4, 0.2);
-    bladeBottom.position.set(0, -0.8, -0.1);
-    bladeBottom.rotation.x = 0.3; // Curve backward slightly
-    bladeBottom.color = darkGray;
-    d9Blade.add(bladeBottom);
+    let bladeCenterBottom = new Node("BladeCenterBottom");
+    bladeCenterBottom.scale.set(4.0, 0.6, 0.2);
+    bladeCenterBottom.position.set(0, -0.8, -0.15);
+    bladeCenterBottom.rotation.x = 0.4; // Cutting edge angled back
+    bladeCenterBottom.color = darkGray;
+    d9Blade.add(bladeCenterBottom);
+
+    // U-Blade Side Wings (Angled forward to funnel dirt)
+    let wingLeft = new Node("WingLeft");
+    wingLeft.scale.set(0.8, 2.4, 0.2);
+    wingLeft.position.set(-2.2, 0.1, 0.3);
+    wingLeft.rotation.y = -0.5; // Angle inward
+    wingLeft.color = catBlack;
+    d9Blade.add(wingLeft);
+
+    let wingRight = new Node("WingRight");
+    wingRight.scale.set(0.8, 2.4, 0.2);
+    wingRight.position.set(2.2, 0.1, 0.3);
+    wingRight.rotation.y = 0.5;
+    wingRight.color = catBlack;
+    d9Blade.add(wingRight);
+
+    // Top Spill Guard (Grill at top of blade)
+    let spillGuard = new Node("SpillGuard");
+    spillGuard.scale.set(4.0, 0.5, 0.1);
+    spillGuard.position.set(0, 1.5, -0.4);
+    spillGuard.rotation.x = -0.4;
+    spillGuard.color = catYellow; // Back of blade is yellow
+    d9Blade.add(spillGuard);
 
 
+    // --- Child 6: Rear Ripper Assembly ---
+    // Single shank heavy ripper
+    let ripperGroup = new Node("RipperGroup");
+    ripperGroup.position.set(0, -0.2, -2.5);
+    ripperGroup.isDrawable = false;
+    d9Root.add(ripperGroup);
+
+    // Ripper mounting frame
+    let ripperFrame = new Node("RipperFrame");
+    ripperFrame.scale.set(1.4, 1.2, 0.6);
+    ripperFrame.position.set(0, 0.2, -0.3);
+    ripperFrame.color = catYellow;
+    ripperGroup.add(ripperFrame);
+
+    // Main heavy shank
+    let ripperShank = new Node("RipperShank");
+    ripperShank.scale.set(0.4, 2.5, 0.6);
+    ripperShank.position.set(0, -0.5, -0.8);
+    ripperShank.rotation.x = -0.2; // Pointed down and forward slightly
+    ripperShank.color = catBlack;
+    ripperGroup.add(ripperShank);
+
+    // Ripper tooth (hardened steel)
+    let ripperTooth = new Node("RipperTooth");
+    ripperTooth.scale.set(0.45, 0.4, 0.7);
+    ripperTooth.position.set(0, -1.2, 0.2);
+    ripperTooth.rotation.x = 0.3;
+    ripperTooth.color = darkGray;
+    ripperShank.add(ripperTooth);
+
+    // Ripper hydraulic cylinder (Visual)
+    let ripCyl = new Node("RipCyl");
+    ripCyl.scale.set(0.25, 1.2, 0.25);
+    ripCyl.position.set(0, 1.0, -0.6);
+    ripCyl.rotation.x = -0.5;
+    ripCyl.color = catYellow;
+    ripperGroup.add(ripCyl);
+
+    let ripRod = new Node("RipRod");
+    ripRod.scale.set(0.12, 1.0, 0.12);
+    ripRod.position.set(0, -0.8, 0);
+    ripRod.color = silver;
+    ripCyl.add(ripRod);
+}
+
+function buildTrackFrame(parentNode, trackColor, yellowColor) {
+    // The massive steel frame that holds the idlers and rollers
+    let frameMain = new Node("TrackFrameMain");
+    frameMain.scale.set(0.8, 0.6, trackLength * 1.8);
+    frameMain.position.set(0, -trackHeight / 2 + wheelR, 0);
+    frameMain.color = yellowColor;
+    parentNode.add(frameMain);
+
+    // Diagonal support up to the sprocket
+    let frameDiag = new Node("TrackFrameDiag");
+    frameDiag.scale.set(0.8, 1.8, 0.8);
+    frameDiag.position.set(0, 0, -trackLength / 2 + 0.5);
+    frameDiag.rotation.x = -0.4;
+    frameDiag.color = yellowColor;
+    parentNode.add(frameDiag);
+
+    // Top elevated drive sprocket (The "High Drive")
+    let topWheel = new Node("Sprocket");
+    topWheel.scale.set(1.0, wheelR * 2.5, wheelR * 2.5); // Wider and larger
+    topWheel.position.set(0, sprocketY, -trackLength / 2 + 0.5);
+    topWheel.color = trackColor;
+    parentNode.add(topWheel);
+
+    // Sprocket hub detail
+    let topHub = new Node("SprocketHub");
+    topHub.scale.set(1.1, wheelR * 1.5, wheelR * 1.5);
+    topHub.position.set(0, 0, 0);
+    topHub.color = yellowColor;
+    topWheel.add(topHub);
+
+    // Front large idler
+    let frontWheel = new Node("FrontIdler");
+    frontWheel.scale.set(0.9, wheelR * 2.2, wheelR * 2.2);
+    frontWheel.position.set(0, -trackHeight / 2 + wheelR, trackLength / 2 + 0.2);
+    frontWheel.color = trackColor;
+    parentNode.add(frontWheel);
+
+    let frontHub = new Node("FrontHub");
+    frontHub.scale.set(1.0, wheelR * 1.2, wheelR * 1.2);
+    frontHub.position.set(0, 0, 0);
+    frontHub.color = yellowColor;
+    frontWheel.add(frontHub);
+
+    // Rear large idler
+    let rearWheel = new Node("RearIdler");
+    rearWheel.scale.set(0.9, wheelR * 2.2, wheelR * 2.2);
+    rearWheel.position.set(0, -trackHeight / 2 + wheelR, -trackLength / 2 - 0.2);
+    rearWheel.color = trackColor;
+    parentNode.add(rearWheel);
+
+    let rearHub = new Node("RearHub");
+    rearHub.scale.set(1.0, wheelR * 1.2, wheelR * 1.2);
+    rearHub.position.set(0, 0, 0);
+    rearHub.color = yellowColor;
+    rearWheel.add(rearHub);
+
+    // Bogies / Lower Rollers (8 per side on a real D9)
+    for(let w = 0; w < 8; w++) {
+        let roller = new Node("Roller" + w);
+        roller.scale.set(0.85, 0.35, 0.35);
+        // Spread evenly between front and rear idlers
+        let zPos = (-trackLength/2) + ((trackLength + 0.4) / 7) * w;
+        roller.position.set(0, -trackHeight / 2 + 0.1, zPos);
+        roller.color = trackColor;
+        parentNode.add(roller);
+    }
 }
 
 
@@ -832,9 +1115,9 @@ function updateDashboard(speed, rpm, psi) {
 function updateKinematics(dt) {
     if (!d9Root) return;
 
-    const baseMoveSpeed = 15.0; // Much faster base speed for fun gameplay
-    const maxTurnSpeed = 1.5;
-    const turnAccel = 5.0;
+    const baseMoveSpeed = 20.0; // Faster top speed
+    const maxTurnSpeed = 2.0;
+    const turnAccel = 12.0; // Snappier turning response
     const bladeSpeed = 2.0 * dt;
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
@@ -852,11 +1135,11 @@ function updateKinematics(dt) {
         if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) bladePushCount += 1;
     }
 
-    // Lower resistance for more arcade-like pushing feel
-    let pushResistance = Math.min(0.6, bladePushCount * 0.015);
-    let dragFactor = Math.min(0.5, dirtDrag * 0.02);
+    // Smoother, heavier pushing feel without completely stalling
+    let pushResistance = Math.min(0.5, bladePushCount * 0.005);
+    let dragFactor = Math.min(0.3, dirtDrag * 0.01);
 
-    let combinedResistance = Math.min(0.7, dragFactor + pushResistance);
+    let combinedResistance = Math.min(0.6, dragFactor + pushResistance);
     let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
 
     let targetVelocity = 0;
@@ -866,8 +1149,8 @@ function updateKinematics(dt) {
     // Disable movement if engine is dead
     if (isEngineDead) targetVelocity = 0;
 
-    // Faster acceleration
-    let accel = 10.0 * dt;
+    // Faster, punchier acceleration so it feels powerful
+    let accel = 25.0 * dt;
     if (d9Velocity < targetVelocity) {
         d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
     } else if (d9Velocity > targetVelocity) {
@@ -1267,8 +1550,8 @@ function updatePhysics(dt) {
             // Push D9 back out of intersection
             d9Root.position.add(pushDir.multiplyScalar(0.5));
 
-            // Apply damage to building
-            let damage = Math.abs(d9Velocity) * 20.0 * dt + 5.0; // static touch causes damage over time
+            // Apply higher damage to building based on speed for satisfying crunches
+            let damage = Math.abs(d9Velocity) * 30.0 * dt + 15.0; // More damage from static pushing too
             b.health -= damage;
             b.color[0] = Math.min(1.0, b.color[0] + 0.1); // flash red
 
@@ -1396,9 +1679,9 @@ function updatePhysics(dt) {
             let lateralForce = (sideDot > 0) ? 1.0 : -1.0;
 
             // Pushing power (Forward + outward lateral arc)
-            let pushForce = 8.0;
-            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.8;
-            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.8;
+            let pushForce = 16.0; // Fling the dirt away nicely
+            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.6;
+            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.6;
 
         } else {
             // Apply Gravity
@@ -1679,17 +1962,28 @@ function render(now) {
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, groundIndexCount, gl.UNSIGNED_SHORT, 0);
+    gl.drawElements(gl.TRIANGLES, groundIndexCount, gl.UNSIGNED_INT, 0);
 
     // Road plane overlay
     gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
-    let roadScaleZ = 100;
+    let roadScaleZ = 800; // Increased length for the bigger map
     let roadScaleX = 8;
     let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, -0.04, 0)); // Slightly above ground
     let roadColor = [0.25, 0.25, 0.25, 1.0]; // Dark grey asphalt
 
     let roadModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, roadMat);
     let roadNormalMatrix = new Matrix4().copy(roadModelViewMatrix);
+
+    // Bind basic cube buffers for road
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadModelViewMatrix.elements);
     gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadNormalMatrix.elements);
@@ -1796,19 +2090,19 @@ function loadLevel(levelIndex) {
     // Generate Border Wall
     sceneBuildings = [];
 
-    // Left Wall (long)
-    let wl = createBuilding("WallL", 10, 20, 200, -30, 80, [0.3, 0.3, 0.3, 1.0]);
+    // Left Wall (longer for expanded map)
+    let wl = createBuilding("WallL", 10, 20, 1600, -100, 600, [0.3, 0.3, 0.3, 1.0]);
     wl.isDestroyed = false; // indestructible
     sceneBuildings.push(wl);
 
-    // Right Wall (long)
-    let wr = createBuilding("WallR", 10, 20, 200, 30, 80, [0.3, 0.3, 0.3, 1.0]);
+    // Right Wall (longer for expanded map)
+    let wr = createBuilding("WallR", 10, 20, 1600, 100, 600, [0.3, 0.3, 0.3, 1.0]);
     wr.isDestroyed = false;
     sceneBuildings.push(wr);
 
-    // Front blockade (with gap at x=0)
-    let wf1 = createBuilding("WallF1", 100, 20, 10, -55, 30, [0.3, 0.3, 0.3, 1.0]);
-    let wf2 = createBuilding("WallF2", 100, 20, 10, 55, 30, [0.3, 0.3, 0.3, 1.0]);
+    // Front blockade (with gap at x=0) - pushed out and widened
+    let wf1 = createBuilding("WallF1", 400, 20, 10, -205, 30, [0.3, 0.3, 0.3, 1.0]);
+    let wf2 = createBuilding("WallF2", 400, 20, 10, 205, 30, [0.3, 0.3, 0.3, 1.0]);
     sceneBuildings.push(wf1);
     sceneBuildings.push(wf2);
     gameState = "PLAYING";
@@ -1851,14 +2145,16 @@ function loadLevel(levelIndex) {
 
     if (currentMissionType === 1) {
         sceneRamps = buildRamp();
-        // Skip buildScenery because we built the border wall above
+        // Add city scenery to the expanded wall mission area
+        sceneBuildings.push(...buildScenery());
+
         gameTanks = [];
         for(let i=0; i<3; i++) {
             let t = buildTank();
             t.position.set((Math.random()-0.5)*10, 1.5, -20 - (i*15));
             gameTanks.push(t);
         }
-        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the wall gap!`;
+        document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the City Wall gate!`;
 
         dirtBoxes = [];
         // Spawn dirt specifically blocking the gap between WallF1 and WallF2 (x=-5 to 5, z=28 to 32)
@@ -1866,7 +2162,8 @@ function loadLevel(levelIndex) {
             let d = new Node("Dirt");
             let s = 1.5 + Math.random()*2.5; // Bigger blocks
             d.scale.set(s,s,s);
-            d.position.set(-5 + Math.random()*10, 5, 28 + Math.random()*4);
+            // Spread the dirt slightly wider since the gate might be visually wider now
+            d.position.set(-8 + Math.random()*16, 5, 28 + Math.random()*4);
             d.color = [0.5, 0.4, 0.4, 1.0]; // Concrete colored rubble
             d.velocity = new Vector3();
             d.isSleeping = false;
@@ -2145,10 +2442,18 @@ function explodeBuilding(b) {
         let dirt = new Node(`BuildingDebris${i}`);
         dirt.position.set(rx, ry, rz);
 
-        // Explosive velocity outward from center
-        let vx = (rx - b.position.x) * 2.0;
+        // Add momentum from the dozer hit to the explosion
+        let hitMomentum = new Vector3();
+        if (d9Root && typeof d9Velocity !== 'undefined') {
+            let chMat = d9Root.worldMatrix.elements;
+            let forward = new Vector3(-chMat[8], -chMat[9], -chMat[10]).normalize();
+            hitMomentum = forward.multiplyScalar(d9Velocity * 0.8);
+        }
+
+        // Explosive velocity outward from center + Dozer hit momentum
+        let vx = (rx - b.position.x) * 2.0 + hitMomentum.x;
         let vy = 5.0 + Math.random() * 5.0; // Shoot up
-        let vz = (rz - b.position.z) * 2.0;
+        let vz = (rz - b.position.z) * 2.0 + hitMomentum.z;
         dirt.velocity = new Vector3(vx, vy, vz);
 
         dirt.isSleeping = false;
@@ -2470,8 +2775,9 @@ function createBuilding(name, width, height, depth, x, z, color) {
     b.position.set(x, terrainY + height / 2, z);
     b.color = color;
     b.isBuilding = true;
-    b.health = 100;
-    b.maxHealth = 100;
+    // Lower health so driving through buildings is more fluid
+    b.health = 40;
+    b.maxHealth = 40;
 
     // Create some windows
     let numWindowsX = Math.max(1, Math.floor(width / 3));
