@@ -293,11 +293,18 @@ const fsSource = `
 
         // Procedural Grid/Checkerboard for the ground plane to show scale/speed
         if (uIsGround) {
+            // Dusty sand color base for the environment
+            baseColor = vec4(0.85, 0.75, 0.65, 1.0);
+
+            // Add some noise/variation
+            highp float noise = fract(sin(dot(vWorldPos.xz, vec2(12.9898, 78.233))) * 43758.5453);
+            baseColor.rgb *= 0.9 + (noise * 0.1);
+
             // Scale world position for the grid size
-            highp vec2 grid = floor(vWorldPos.xz * 1.0); // 1 unit grid blocks
+            highp vec2 grid = floor(vWorldPos.xz * 5.0); // 5 unit grid blocks
             highp float checker = mod(grid.x + grid.y, 2.0);
             if (checker == 0.0) {
-                baseColor.rgb *= 0.9; // Darken alternating squares slightly
+                baseColor.rgb *= 0.95; // Subtle grid lines
             }
         }
 
@@ -345,7 +352,7 @@ function initWebGL() {
     initBuffers(gl);
 
     // Dynamic sky color is handled in clear during render loop, set default here
-    gl.clearColor(0.53, 0.81, 0.92, 1.0); // Sky blue
+    gl.clearColor(0.5, 0.6, 0.7, 1.0); // Dusty blue sky
     gl.clearDepth(1.0);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -1362,6 +1369,52 @@ function updateKinematics(dt) {
         }
     }
 
+    // -0.5 Tank Physics (Squashable by D9)
+    for (let i = gameTanks.length - 1; i >= 0; i--) {
+        let t = gameTanks[i];
+        if (t.isSquashed) continue;
+
+        let tankSize = new Vector3(3, 1.2, 5); // From buildTank
+        let hitBlade = checkAABBCollision(t.position, tankSize, bladeWorldPos, bladeSize);
+        let hitChassis = checkAABBCollision(t.position, tankSize, chassisWorldPos, chassisSize);
+
+        if (hitBlade || hitChassis) {
+            // Only squash if we hit it with some speed, otherwise we just push it
+            if (Math.abs(d9Velocity) > 2.0) {
+                t.isSquashed = true;
+
+                // Flatten the entire tank hierarchy
+                t.scale.y = 0.1;
+                t.position.y = getTerrainHeight(t.position.x, t.position.z) + 0.1;
+
+                // Stop AI
+                t.aiState = -1;
+
+                // Explosion particles
+                for(let j=0; j<10; j++) {
+                    let d = new Node("TankScrap");
+                    d.scale.set(0.5, 0.5, 0.5);
+                    d.position.copy(t.position);
+                    d.position.y += 1.0;
+                    d.color = [0.2, 0.2, 0.2, 1.0];
+                    d.velocity = new Vector3(
+                        (Math.random()-0.5)*10,
+                        5 + Math.random()*10,
+                        (Math.random()-0.5)*10
+                    );
+                    d.isSleeping = false;
+                    dirtBoxes.push(d);
+                }
+
+                addCoffee(25);
+            } else {
+                // Push it
+                let pushDir = new Vector3(forward.x, 0, forward.z).multiplyScalar(d9Velocity * dt * 0.5);
+                t.position.add(pushDir);
+            }
+        }
+    }
+
     // Dynamic Chaining UI Prompt
     let promptEl = document.getElementById("chainPrompt");
     if (promptEl) {
@@ -1967,9 +2020,9 @@ function render(now) {
     // Road plane overlay
     gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
     let roadScaleZ = 800; // Increased length for the bigger map
-    let roadScaleX = 8;
-    let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, -0.04, 0)); // Slightly above ground
-    let roadColor = [0.25, 0.25, 0.25, 1.0]; // Dark grey asphalt
+    let roadScaleX = 20; // Wider road for the city
+    let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, 0.5, 0)); // Slightly above ground
+    let roadColor = [0.2, 0.2, 0.22, 1.0]; // Dark grey asphalt
 
     let roadModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, roadMat);
     let roadNormalMatrix = new Matrix4().copy(roadModelViewMatrix);
@@ -2154,6 +2207,12 @@ function loadLevel(levelIndex) {
             t.position.set((Math.random()-0.5)*10, 1.5, -20 - (i*15));
             gameTanks.push(t);
         }
+
+        // Add lots of running soldiers
+        for(let i=0; i<15; i++) {
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*50, 10 + Math.random()*30));
+        }
+
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the City Wall gate!`;
 
         dirtBoxes = [];
@@ -2306,8 +2365,8 @@ const RAMP_HEIGHT = 4.0;
 const RAMP_WIDTH = 8.0;
 
 function getTerrainHeightBase(x, z) {
-    // Generate uneven terrain
-    return Math.sin(x*0.1) * 2.0 + Math.cos(z*0.1) * 2.0;
+    // Generate flatter desert/urban terrain
+    return Math.sin(x*0.02) * 1.5 + Math.cos(z*0.02) * 1.5;
 }
 
 function getTerrainHeight(x, z) {
@@ -2587,17 +2646,19 @@ function updateGameLogic(dt) {
         let tz = targetZ - t.position.z;
         let distToTarget = Math.sqrt(tx*tx + tz*tz);
 
-        if (distToTarget > 2.0 && !gameWon) {
-            let angle = Math.atan2(tx, tz);
-            let angleDiff = angle - t.rotation.y;
-            while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
-            while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        if (t.aiState !== -1) {
+            if (distToTarget > 2.0 && !gameWon) {
+                let angle = Math.atan2(tx, tz);
+                let angleDiff = angle - t.rotation.y;
+                while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
 
-            t.rotation.y += angleDiff * 2.0 * dt;
-            t.position.x += Math.sin(t.rotation.y) * 12.0 * dt;
-            t.position.z += Math.cos(t.rotation.y) * 12.0 * dt;
-        } else if (gameWon) {
-            t.position.z += 25.0 * dt; // Push hard forward when level complete
+                t.rotation.y += angleDiff * 2.0 * dt;
+                t.position.x += Math.sin(t.rotation.y) * 12.0 * dt;
+                t.position.z += Math.cos(t.rotation.y) * 12.0 * dt;
+            } else if (gameWon) {
+                t.position.z += 25.0 * dt; // Push hard forward when level complete
+            }
         }
 
         // Emit smoke
@@ -2817,54 +2878,66 @@ function createBuilding(name, width, height, depth, x, z, color) {
 function buildScenery() {
     let buildings = [];
 
-    // --- Add Blocking Objects (Concrete Slabs, Metal Rods) ---
-    // Placed between buildings or in paths to act as large, solid obstacles
-    let block1 = new Node("ConcreteBlock");
-    block1.scale.set(6, 2, 2);
-    let by1 = getTerrainHeight(-40, 27) + 1; // Exactly on ground
-    block1.position.set(-40, by1, 27);
-    block1.color = [0.5, 0.5, 0.5, 1.0];
-    buildings.push(block1);
+    // Dense city layout based on image
+    // Generate blocks with varying heights, lighter sand/concrete colors
 
-    let block2 = new Node("MetalRod");
-    block2.scale.set(0.5, 0.5, 10);
-    let by2 = getTerrainHeight(-10, 30) + 0.25;
-    block2.position.set(-10, by2, 30);
-    block2.color = [0.3, 0.2, 0.1, 1.0];
-    block2.rotation.y = 0.5;
-    buildings.push(block2);
+    // Main Mosque near the road
+    let mosqueBase = createBuilding("MosqueBase", 30, 15, 30, 30, 40, [0.9, 0.85, 0.8, 1.0]);
 
-    let block3 = new Node("FallenPillar");
-    block3.scale.set(1.5, 1.5, 8);
-    let by3 = getTerrainHeight(20, -10) + 0.75;
-    block3.position.set(20, by3, -10);
-    block3.color = [0.7, 0.7, 0.6, 1.0];
-    block3.rotation.y = -0.3;
-    buildings.push(block3);
+    // Dome for mosque
+    let dome = new Node("Dome");
+    dome.scale.set(15, 10, 15);
+    dome.position.set(0, 15/2 + 5, 0); // on top
+    dome.color = [0.9, 0.85, 0.8, 1.0];
+    mosqueBase.add(dome);
 
+    // Minarets
+    for(let i=0; i<4; i++) {
+        let minaret = new Node("Minaret");
+        minaret.scale.set(3, 40, 3);
+        let mx = (i % 2 === 0 ? 1 : -1) * 12;
+        let mz = (i < 2 ? 1 : -1) * 12;
+        minaret.position.set(mx, 15/2 + 20, mz);
+        minaret.color = [0.9, 0.85, 0.8, 1.0];
+        mosqueBase.add(minaret);
+    }
+    buildings.push(mosqueBase);
 
-    // The Main Hospital
-    let hospital = createBuilding("Hospital", 15, 20, 15, -25, 20, [0.8, 0.8, 0.9, 1.0]);
-    // Add Medical Cross to Hospital
-    let crossH = new Node("CrossH");
-    crossH.scale.set(3, 1, 0.5);
-    crossH.position.set(0, 5, 15/2 + 0.3); // relative to hospital, pop out front
-    crossH.color = [0.9, 0.1, 0.1, 1.0];
-    hospital.add(crossH);
-    let crossV = new Node("CrossV");
-    crossV.scale.set(1, 3, 0.5);
-    crossV.position.set(0, 5, 15/2 + 0.3);
-    crossV.color = [0.9, 0.1, 0.1, 1.0];
-    hospital.add(crossV);
-    buildings.push(hospital);
+    // City grid - denser
+    const colors = [
+        [0.85, 0.8, 0.75, 1.0], // light sand
+        [0.9, 0.85, 0.8, 1.0],  // off-white
+        [0.8, 0.8, 0.8, 1.0],   // light grey
+        [0.75, 0.7, 0.65, 1.0], // tan
+        [0.8, 0.75, 0.7, 1.0]   // warm grey
+    ];
 
-    // Mini City blocks
-    buildings.push(createBuilding("Apt1", 10, 30, 10, -45, 15, [0.7, 0.6, 0.5, 1.0]));
-    buildings.push(createBuilding("Apt2", 12, 15, 12, -35, 40, [0.5, 0.6, 0.7, 1.0]));
-    buildings.push(createBuilding("Office1", 15, 40, 15, -60, 25, [0.3, 0.4, 0.5, 1.0]));
-    buildings.push(createBuilding("Warehouse", 25, 10, 20, 30, -30, [0.8, 0.7, 0.6, 1.0]));
-    buildings.push(createBuilding("Tower", 8, 50, 8, 45, 15, [0.2, 0.2, 0.3, 1.0]));
-    buildings.push(createBuilding("RuinedBlock", 12, 8, 12, 15, 45, [0.4, 0.4, 0.4, 1.0]));
+    for (let x = -150; x <= 150; x += 30) {
+        for (let z = 10; z <= 250; z += 30) {
+            // Leave center road area somewhat clear
+            if (Math.abs(x) < 20 && z < 100) continue;
+
+            // Skip where mosque is
+            if (x > 10 && x < 50 && z > 20 && z < 60) continue;
+
+            // 80% chance for a building in this block
+            if (Math.random() < 0.8) {
+                // Random size
+                let w = 15 + Math.random() * 10;
+                let d = 15 + Math.random() * 10;
+                let h = 10 + Math.random() * 40; // varying heights
+
+                // Some taller buildings
+                if (Math.random() < 0.1) h += 30;
+
+                let cx = x + (Math.random() * 10 - 5);
+                let cz = z + (Math.random() * 10 - 5);
+
+                let col = colors[Math.floor(Math.random() * colors.length)];
+                buildings.push(createBuilding(`Bldg_${x}_${z}`, w, h, d, cx, cz, col));
+            }
+        }
+    }
 
     return buildings;
 }
