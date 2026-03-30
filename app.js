@@ -282,6 +282,8 @@ const vsSource = `
 `;
 
 const fsSource = `
+    precision mediump float;
+
     varying highp vec3 vLighting;
     varying lowp vec4 vColor;
     varying highp vec4 vWorldPos;
@@ -1128,7 +1130,8 @@ function updateKinematics(dt) {
     const bladeSpeed = 2.0 * dt;
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
-    let chassisAABB = new Vector3(2.8, 1.5, 4.5);
+    let chassisSize = new Vector3(2.8, 1.5, 4.5);
+    let chassisAABB = chassisSize;
     let dirtDrag = 0;
     let bladePushCount = 0;
 
