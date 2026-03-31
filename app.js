@@ -289,6 +289,7 @@ const fsSource = `
     varying highp vec4 vWorldPos;
 
     uniform bool uIsGround;
+    uniform bool uIsBuilding;
 
     void main(void) {
         highp vec4 baseColor = vColor;
@@ -307,6 +308,24 @@ const fsSource = `
             highp float checker = mod(grid.x + grid.y, 2.0);
             if (checker == 0.0) {
                 baseColor.rgb *= 0.95; // Subtle grid lines
+            }
+        } else if (uIsBuilding) {
+            // Procedural Windows for buildings (using local object space coordinates)
+            // vWorldPos here is actually the scaled aVertexPosition because we didn't multiply by world matrix in vertex shader
+            highp vec2 winGridX = floor(vWorldPos.xy * vec2(4.0, 3.0));
+            highp vec2 winGridZ = floor(vWorldPos.zy * vec2(4.0, 3.0));
+
+            highp float isWinX = mod(winGridX.x, 2.0) * mod(winGridX.y, 2.0);
+            highp float isWinZ = mod(winGridZ.x, 2.0) * mod(winGridZ.y, 2.0);
+
+            // Only draw windows on the vertical faces (abs(vWorldPos.y) < 0.49 avoids the roof)
+            // And leave the ground floor somewhat clear (vWorldPos.y > -0.4)
+            if (abs(vWorldPos.y) < 0.49 && vWorldPos.y > -0.4) {
+                if (abs(vWorldPos.z) > 0.49 && isWinX > 0.5) {
+                    baseColor.rgb = vec3(0.1, 0.15, 0.2); // Window color
+                } else if (abs(vWorldPos.x) > 0.49 && isWinZ > 0.5) {
+                    baseColor.rgb = vec3(0.1, 0.15, 0.2); // Window color
+                }
             }
         }
 
@@ -349,6 +368,18 @@ function initWebGL() {
         alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
         return null;
     }
+
+    // Cache Uniform Locations globally
+    program.uModelViewMatrix = gl.getUniformLocation(program, 'uModelViewMatrix');
+    program.uProjectionMatrix = gl.getUniformLocation(program, 'uProjectionMatrix');
+    program.uNormalMatrix = gl.getUniformLocation(program, 'uNormalMatrix');
+    program.uColor = gl.getUniformLocation(program, 'uColor');
+    program.uIsGround = gl.getUniformLocation(program, 'uIsGround');
+    program.uIsBuilding = gl.getUniformLocation(program, 'uIsBuilding');
+
+    // Cache Attrib Locations globally
+    program.aVertexPosition = gl.getAttribLocation(program, 'aVertexPosition');
+    program.aVertexNormal = gl.getAttribLocation(program, 'aVertexNormal');
 
     // Initialize Box Geometry Buffers
     initBuffers(gl);
@@ -433,7 +464,7 @@ function initBuffers(gl) {
 
     // --- Generate Wavy Ground Mesh ---
     const size = 2400; // 8 times bigger
-    const segments = 400; // Increased segments for larger area
+    const segments = 150; // Massively reduced for performance (was 400 -> 160k quads, now 150 -> 22k)
     const halfSize = size / 2;
     const segmentSize = size / segments;
 
@@ -548,23 +579,25 @@ class Node {
 
             // Calculate normal matrix (transpose of inverse of modelViewMatrix)
             // For simple translation/rotation/uniform scale, modelViewMatrix is fine for normals if we just want basics
-            // Actually, we should extract rotation/scale for normals. For now, modelViewMatrix works for non-skewed.
             let normalMatrix = new Matrix4().copy(modelViewMatrix);
 
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, modelViewMatrix.elements);
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
-            gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, normalMatrix.elements);
-            gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), this.color);
-            // Default uIsGround to false for nodes
-            gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0);
+            // Use cached uniform locations
+            gl.uniformMatrix4fv(program.uModelViewMatrix, false, modelViewMatrix.elements);
+            gl.uniformMatrix4fv(program.uProjectionMatrix, false, projectionMatrix.elements);
+            gl.uniformMatrix4fv(program.uNormalMatrix, false, normalMatrix.elements);
+            gl.uniform4fv(program.uColor, this.color);
 
+            gl.uniform1i(program.uIsGround, 0);
+            gl.uniform1i(program.uIsBuilding, this.isBuilding ? 1 : 0);
+
+            // Use cached attrib locations
             gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-            gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+            gl.vertexAttribPointer(program.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(program.aVertexPosition);
 
             gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-            gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
-            gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
+            gl.vertexAttribPointer(program.aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(program.aVertexNormal);
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
             gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
@@ -1932,7 +1965,8 @@ let cameraPitch = 0.2; // Initial pitch (in radians)
 
 function render(now) {
     now *= 0.001; // convert to seconds
-    const dt = now - lastTime;
+    // Cap dt to prevent physics explosions on lag spikes or when tab is inactive
+    const dt = Math.min(now - lastTime, 0.1);
     lastTime = now;
 
     // Update
@@ -1952,47 +1986,69 @@ function render(now) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
     // Camera setup
-    const fieldOfView = 45 * Math.PI / 180;
+    const fieldOfView = 50 * Math.PI / 180; // slightly wider FOV for better awareness
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-    const zNear = 0.1;
-    const zFar = 100.0;
+    const zNear = 0.5;
+    const zFar = 150.0; // Extend draw distance slightly to match the culling range
     projectionMatrix.makePerspective(fieldOfView, aspect, zNear, zFar);
 
     // Make camera follow D9 loosely
-    let distance = 35;
+    let distance = 20; // Reduced distance so camera doesn't start blocked by large buildings behind player
     let cameraOffset = new Vector3(
         -Math.sin(d9Root.rotation.y) * Math.cos(cameraPitch) * distance,
-        Math.sin(cameraPitch) * distance + 2, // Base height offset
+        Math.sin(cameraPitch) * distance + 6, // Higher base height offset for clear top-down view
         -Math.cos(d9Root.rotation.y) * Math.cos(cameraPitch) * distance
     );
     let targetCameraPos = new Vector3().copy(d9Root.position).add(cameraOffset);
-    if (typeof window.currentCameraPos === 'undefined') {
+
+    // Look slightly ahead of the D9 to see where we are going
+    let lookAheadOffset = new Vector3(
+        Math.sin(d9Root.rotation.y) * 12.0,
+        0.0,
+        Math.cos(d9Root.rotation.y) * 12.0
+    );
+    let idealTargetPos = new Vector3().copy(d9Root.position).add(lookAheadOffset);
+
+    // We no longer rely strictly on `window.currentCameraPos` for the initial jump
+    // to avoid the camera sweeping through the map geometry on load.
+    if (typeof window.currentCameraPos === 'undefined' || window.forceCameraReset) {
         window.currentCameraPos = targetCameraPos.clone();
+        window.currentTargetPos = idealTargetPos.clone();
+        window.forceCameraReset = false;
     } else {
-        window.currentCameraPos.x += (targetCameraPos.x - window.currentCameraPos.x) * 15 * dt;
-        window.currentCameraPos.y += (targetCameraPos.y - window.currentCameraPos.y) * 15 * dt;
-        window.currentCameraPos.z += (targetCameraPos.z - window.currentCameraPos.z) * 15 * dt;
+        // Smoother, slightly slower interpolation for a heavier feel
+        window.currentCameraPos.x += (targetCameraPos.x - window.currentCameraPos.x) * 8 * dt;
+        window.currentCameraPos.y += (targetCameraPos.y - window.currentCameraPos.y) * 8 * dt;
+        window.currentCameraPos.z += (targetCameraPos.z - window.currentCameraPos.z) * 8 * dt;
+
+        window.currentTargetPos.x += (idealTargetPos.x - window.currentTargetPos.x) * 10 * dt;
+        window.currentTargetPos.y += (idealTargetPos.y - window.currentTargetPos.y) * 10 * dt;
+        window.currentTargetPos.z += (idealTargetPos.z - window.currentTargetPos.z) * 10 * dt;
     }
     let cameraPos = window.currentCameraPos;
-    let targetPos = new Vector3().copy(d9Root.position);
+    let targetPos = window.currentTargetPos;
     let up = new Vector3(0, 1, 0);
 
-    // Ensure camera stays above the ground/terrain
+    // Ensure camera stays above the ground/terrain with more padding
     let terrainHeightAtCamera = getTerrainHeight(cameraPos.x, cameraPos.z);
-    if (cameraPos.y < terrainHeightAtCamera + 0.5) {
-        cameraPos.y = terrainHeightAtCamera + 0.5;
+    if (cameraPos.y < terrainHeightAtCamera + 2.0) {
+        cameraPos.y += (terrainHeightAtCamera + 2.0 - cameraPos.y) * 15 * dt;
     }
 
-    // Camera Collision against buildings
+    // Improved Camera Collision against buildings
     for (let b of sceneBuildings) {
         let size = b.scale;
         let pos = b.position;
 
-        // Treat camera like a point or small box to check collision
-        let hit = checkAABBCollision(cameraPos, new Vector3(1, 1, 1), pos, size);
+        let hit = checkAABBCollision(cameraPos, new Vector3(2, 2, 2), pos, size);
         if (hit) {
-            // Push camera up above the building to stop it getting stuck inside
-            cameraPos.y = pos.y + (size.y / 2) + 2.0;
+            // Instead of just pushing up (which can cause the camera to stare at a blank roof),
+            // slide the camera forward towards the D9 to get in front of the obstructing building.
+            let dirToD9 = new Vector3().copy(d9Root.position).sub(cameraPos).normalize();
+            cameraPos.add(dirToD9.multiplyScalar(20.0 * dt));
+
+            // Also push up slightly to guarantee we un-stick eventually
+            cameraPos.y += 10.0 * dt;
         }
     }
 
@@ -2004,8 +2060,16 @@ function render(now) {
         d9Root.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
+    // --- View Frustum / Distance Culling ---
+    // Instead of full frustum planes, we use a simple distance check from camera
+    // This dramatically reduces draw calls for dense city grids
+    const maxDrawDistSq = 150 * 150;
+    let drawnBuildings = 0;
+
     // Draw Dirt / Rubble / Limbs
     for (let dirt of dirtBoxes) {
+        if (cameraPos.distanceToSquared(dirt.position) > maxDrawDistSq) continue;
+
         if (dirt.isLimb) {
             dirt.limbPhase += 5.0 * dt;
             // Flail animation
@@ -2015,15 +2079,25 @@ function render(now) {
         dirt.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
-    gameTanks.forEach(t => { t.updateMatrix(null); t.draw(gl, program, viewMatrix, projectionMatrix); });
+    gameTanks.forEach(t => {
+        if (cameraPos.distanceToSquared(t.position) < maxDrawDistSq) {
+            t.updateMatrix(null);
+            t.draw(gl, program, viewMatrix, projectionMatrix);
+        }
+    });
 
-    if (gameFuelTruck) {
+    if (gameFuelTruck && cameraPos.distanceToSquared(gameFuelTruck.position) < maxDrawDistSq) {
         gameFuelTruck.updateMatrix(null);
         gameFuelTruck.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
     if (typeof gameCars !== 'undefined') {
-        gameCars.forEach(c => { c.updateMatrix(null); c.draw(gl, program, viewMatrix, projectionMatrix); });
+        gameCars.forEach(c => {
+            if (cameraPos.distanceToSquared(c.position) < maxDrawDistSq) {
+                c.updateMatrix(null);
+                c.draw(gl, program, viewMatrix, projectionMatrix);
+            }
+        });
     }
 
     // Draw Particles
@@ -2039,6 +2113,8 @@ function render(now) {
     }
 
     for (let b of sceneBuildings) {
+        if (cameraPos.distanceToSquared(b.position) > maxDrawDistSq) continue;
+        drawnBuildings++;
         b.updateMatrix(null);
         b.draw(gl, program, viewMatrix, projectionMatrix);
     }
@@ -2048,55 +2124,55 @@ function render(now) {
     let groundModelViewMatrix = new Matrix4().copy(viewMatrix); // World coordinates
     let groundNormalMatrix = new Matrix4().copy(viewMatrix);
 
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, groundModelViewMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uProjectionMatrix'), false, projectionMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, groundNormalMatrix.elements);
-    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), [0.3, 0.5, 0.2, 1.0]);
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 1); // Keep grid shader flag on
+    gl.uniformMatrix4fv(program.uModelViewMatrix, false, groundModelViewMatrix.elements);
+    gl.uniformMatrix4fv(program.uProjectionMatrix, false, projectionMatrix.elements);
+    gl.uniformMatrix4fv(program.uNormalMatrix, false, groundNormalMatrix.elements);
+    gl.uniform4fv(program.uColor, [0.3, 0.5, 0.2, 1.0]);
+    gl.uniform1i(program.uIsGround, 1); // Keep grid shader flag on
 
     gl.bindBuffer(gl.ARRAY_BUFFER, groundPositionBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+    gl.vertexAttribPointer(program.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(program.aVertexPosition);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, groundNormalBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
+    gl.vertexAttribPointer(program.aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(program.aVertexNormal);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
     gl.drawElements(gl.TRIANGLES, groundIndexCount, gl.UNSIGNED_INT, 0);
 
     // Road networks overlay
-    gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
+    gl.uniform1i(program.uIsGround, 0); // Disable procedural grid for road
 
     // Bind basic cube buffers for roads once
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
+    gl.vertexAttribPointer(program.aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(program.aVertexPosition);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
-    gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexNormal'), 3, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexNormal'));
+    gl.vertexAttribPointer(program.aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(program.aVertexNormal);
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
     let roadColor = [0.2, 0.2, 0.22, 1.0]; // Dark grey asphalt
-    gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), roadColor);
+    gl.uniform4fv(program.uColor, roadColor);
 
     // Main Avenue (Z-axis)
     let roadScaleZ = 800;
     let roadScaleX = 25; // Wider road
     let roadMatZ = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, 0.5, 0));
     let roadMVZ = new Matrix4().multiplyMatrices(viewMatrix, roadMatZ);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadMVZ.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadMVZ.elements);
+    gl.uniformMatrix4fv(program.uModelViewMatrix, false, roadMVZ.elements);
+    gl.uniformMatrix4fv(program.uNormalMatrix, false, roadMVZ.elements);
     gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
 
     // Cross Streets (X-axis)
     for (let z = -20; z <= 300; z += 105) {
         let crossMat = new Matrix4().makeScale(400, 0.1, 15).multiply(new Matrix4().makeTranslation(0, 0.51, z));
         let crossMV = new Matrix4().multiplyMatrices(viewMatrix, crossMat);
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, crossMV.elements);
-        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, crossMV.elements);
+        gl.uniformMatrix4fv(program.uModelViewMatrix, false, crossMV.elements);
+        gl.uniformMatrix4fv(program.uNormalMatrix, false, crossMV.elements);
         gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
     }
 
@@ -2194,6 +2270,7 @@ window.onload = () => {
 };
 
 function loadLevel(levelIndex) {
+    window.forceCameraReset = true; // Snap camera exactly to starting position
     currentLevel = levelIndex;
 
     // Generate Border Wall
@@ -3079,10 +3156,15 @@ function createBuilding(name, width, height, depth, x, z, color) {
     b.health = 40 + (width * depth * 0.1); // Slightly tougher large buildings
     b.maxHealth = b.health;
 
-    let isApartment = height > 20 && width > 15;
+    // Performance check: do not add thousands of windows to massive border walls
+    if (name.includes("Wall") || width > 100 || depth > 100) {
+        // Just return the big block
+        return b;
+    }
+
     let isSkyscraper = height > 40;
 
-    // Roof detailing
+    // Roof detailing (minimal geometric detail, high impact)
     let roofParapet = new Node("Parapet");
     roofParapet.scale.set(width, 0.5, depth);
     roofParapet.position.set(0, height/2 + 0.25, 0);
@@ -3095,104 +3177,9 @@ function createBuilding(name, width, height, depth, x, z, color) {
     roofAC.color = [0.7, 0.7, 0.7, 1.0];
     b.add(roofAC);
 
-    // Create windows & balconies
-    let floorHeight = 4.0;
-    let numFloors = Math.floor(height / floorHeight);
-    let numWindowsX = Math.max(1, Math.floor(width / 4));
-    let numWindowsZ = Math.max(1, Math.floor(depth / 4));
-
-    let winColor = isSkyscraper ? [0.6, 0.8, 0.9, 0.9] : [0.15, 0.15, 0.2, 1.0];
-
-    for (let floor = 0; floor < numFloors; floor++) {
-        let ly = -height/2 + (floor * floorHeight) + 2.0;
-
-        // Ground floor gets doors/storefronts instead of normal windows sometimes
-        let isGround = (floor === 0);
-
-        for (let wx = 0; wx < numWindowsX; wx++) {
-            let lx = -width/2 + (width / numWindowsX) * (wx + 0.5);
-
-            // Front Side
-            if (isGround && wx === Math.floor(numWindowsX/2)) {
-                // Main Door
-                let door = new Node("MainDoor");
-                door.scale.set(3, 3, 0.3);
-                door.position.set(lx, ly - 0.5, depth/2 + 0.1);
-                door.color = isSkyscraper ? [0.4, 0.4, 0.4, 1.0] : [0.3, 0.15, 0.05, 1.0];
-                b.add(door);
-
-                // Awning
-                if (isApartment) {
-                    let awning = new Node("Awning");
-                    awning.scale.set(3.5, 0.2, 2.0);
-                    awning.position.set(lx, ly + 1.2, depth/2 + 1.0);
-                    awning.rotation.x = 0.2;
-                    awning.color = [0.8, 0.2, 0.2, 1.0]; // Red awning
-                    b.add(awning);
-                }
-            } else {
-                let winF = new Node("WindowF");
-                winF.scale.set(2.0, 2.5, 0.2);
-                winF.position.set(lx, ly, depth/2 + 0.1);
-                winF.color = winColor;
-                b.add(winF);
-
-                // Balconies for apartments
-                if (isApartment && !isGround && Math.random() < 0.6) {
-                    let balcony = new Node("Balcony");
-                    balcony.scale.set(2.8, 0.2, 1.5);
-                    balcony.position.set(lx, ly - 1.2, depth/2 + 0.75);
-                    balcony.color = [0.5, 0.5, 0.5, 1.0];
-                    b.add(balcony);
-
-                    let railing = new Node("Railing");
-                    railing.scale.set(2.8, 1.0, 0.1);
-                    railing.position.set(lx, ly - 0.7, depth/2 + 1.5);
-                    railing.color = [0.2, 0.2, 0.2, 1.0];
-                    b.add(railing);
-                }
-            }
-
-            // Back Side
-            let winB = new Node("WindowB");
-            winB.scale.set(2.0, 2.5, 0.2);
-            winB.position.set(lx, ly, -depth/2 - 0.1);
-            winB.color = winColor;
-            b.add(winB);
-        }
-
-        // Left/Right sides
-        for (let wz = 0; wz < numWindowsZ; wz++) {
-            let lz = -depth/2 + (depth / numWindowsZ) * (wz + 0.5);
-
-            let winL = new Node("WindowL");
-            winL.scale.set(0.2, 2.5, 2.0);
-            winL.position.set(-width/2 - 0.1, ly, lz);
-            winL.color = winColor;
-            b.add(winL);
-
-            let winR = new Node("WindowR");
-            winR.scale.set(0.2, 2.5, 2.0);
-            winR.position.set(width/2 + 0.1, ly, lz);
-            winR.color = winColor;
-            b.add(winR);
-        }
-    }
-
-    // Add some visual structural columns for skyscrapers
-    if (isSkyscraper) {
-        let colL = new Node("ColL");
-        colL.scale.set(1.0, height, 1.0);
-        colL.position.set(-width/2 + 0.5, 0, depth/2 + 0.2);
-        colL.color = [0.4, 0.4, 0.45, 1.0];
-        b.add(colL);
-
-        let colR = new Node("ColR");
-        colR.scale.set(1.0, height, 1.0);
-        colR.position.set(width/2 - 0.5, 0, depth/2 + 0.2);
-        colR.color = [0.4, 0.4, 0.45, 1.0];
-        b.add(colR);
-    }
+    // The rest of the "high definition" details (windows, doors, stories)
+    // are now handled procedurally via the fragment shader (`uIsBuilding = true`),
+    // entirely eliminating the tens of thousands of draw calls and nodes that caused lag.
 
     return b;
 }
