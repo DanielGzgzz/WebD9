@@ -1372,44 +1372,56 @@ function updateKinematics(dt) {
         }
     }
 
-    // -0.5 Tank Physics (Squashable by D9)
-    for (let i = gameTanks.length - 1; i >= 0; i--) {
-        let t = gameTanks[i];
+    // -0.5 Vehicle Physics (Squashable by D9)
+    let allSquashables = [...gameTanks];
+    if (typeof gameCars !== 'undefined') allSquashables.push(...gameCars);
+
+    for (let i = allSquashables.length - 1; i >= 0; i--) {
+        let t = allSquashables[i];
         if (t.isSquashed) continue;
 
-        let tankSize = new Vector3(3, 1.2, 5); // From buildTank
-        let hitBlade = checkAABBCollision(t.position, tankSize, bladeWorldPos, bladeSize);
-        let hitChassis = checkAABBCollision(t.position, tankSize, chassisWorldPos, chassisSize);
+        let vSize = t.isCar ? new Vector3(2.5, 1.0, 4.5) : new Vector3(3, 1.2, 5);
+        let hitBlade = checkAABBCollision(t.position, vSize, bladeWorldPos, bladeSize);
+        let hitChassis = checkAABBCollision(t.position, vSize, chassisWorldPos, chassisSize);
 
         if (hitBlade || hitChassis) {
-            // Only squash if we hit it with some speed, otherwise we just push it
-            if (Math.abs(d9Velocity) > 2.0) {
+            let requiredSpeed = t.isCar ? 1.0 : 3.0; // Cars squash easier than tanks
+            if (Math.abs(d9Velocity) > requiredSpeed) {
                 t.isSquashed = true;
 
-                // Flatten the entire tank hierarchy
+                // Flatten the entire hierarchy
                 t.scale.y = 0.1;
                 t.position.y = getTerrainHeight(t.position.x, t.position.z) + 0.1;
 
                 // Stop AI
                 t.aiState = -1;
+                if (t.isCar) {
+                    t.isDead = true;
+                    // Stop siren color if cop
+                    let sirens = t.children.find(c => c.name === "Sirens");
+                    if (sirens) sirens.color = [0.2, 0.2, 0.2, 1.0];
+                }
 
-                // Explosion particles
-                for(let j=0; j<10; j++) {
-                    let d = new Node("TankScrap");
-                    d.scale.set(0.5, 0.5, 0.5);
+                // Explosion / Scrap particles
+                let scrapCount = t.isCar ? 5 : 10;
+                for(let j=0; j<scrapCount; j++) {
+                    let d = new Node("ScrapMetal");
+                    d.scale.set(0.6, 0.6, 0.6);
                     d.position.copy(t.position);
                     d.position.y += 1.0;
-                    d.color = [0.2, 0.2, 0.2, 1.0];
+                    d.color = [0.3, 0.3, 0.3, 1.0];
                     d.velocity = new Vector3(
-                        (Math.random()-0.5)*10,
-                        5 + Math.random()*10,
-                        (Math.random()-0.5)*10
+                        (Math.random()-0.5)*12,
+                        6 + Math.random()*12,
+                        (Math.random()-0.5)*12
                     );
                     d.isSleeping = false;
+                    d.isScrap = true; // Tag it to collect later
+                    d.life = 1; // Needs an initial positive life to not get immediately garbage collected
                     dirtBoxes.push(d);
                 }
 
-                addCoffee(25);
+                addCoffee(t.isCar ? 5 : 25);
             } else {
                 // Push it
                 let pushDir = new Vector3(forward.x, 0, forward.z).multiplyScalar(d9Velocity * dt * 0.5);
@@ -1600,14 +1612,22 @@ function updatePhysics(dt) {
             let pushDir = new Vector3().copy(chassisWorldPos).sub(b.position).normalize();
             pushDir.y = 0;
 
-            // Halt forward velocity immediately if we hit an object
-            if (d9Velocity > 0) d9Velocity = 0;
+            // Allow pushing through if we have high momentum and blade upgrades
+            let bladeUpg = garageUpgrades.blade ? garageUpgrades.blade.level : 0;
+            let crushThreshold = 10.0 + (b.maxHealth * 0.2) - (bladeUpg * 2.0);
 
-            // Push D9 back out of intersection
-            d9Root.position.add(pushDir.multiplyScalar(0.5));
+            if (Math.abs(d9Velocity) < crushThreshold) {
+                // Halt forward velocity immediately if we hit an object and can't crush it
+                if (d9Velocity > 0) d9Velocity = 0;
+                // Push D9 back out of intersection
+                d9Root.position.add(pushDir.multiplyScalar(0.5));
+            } else {
+                // Punching through! Slow down slightly but keep going
+                d9Velocity *= 0.8;
+            }
 
             // Apply higher damage to building based on speed for satisfying crunches
-            let damage = Math.abs(d9Velocity) * 30.0 * dt + 15.0; // More damage from static pushing too
+            let damage = Math.abs(d9Velocity) * 40.0 * dt + 25.0 + (bladeUpg * 10.0);
             b.health -= damage;
             b.color[0] = Math.min(1.0, b.color[0] + 0.1); // flash red
 
@@ -1616,7 +1636,7 @@ function updatePhysics(dt) {
 
             if (b.health <= 0) {
                 explodeBuilding(b);
-                addCoffee(10); // Reward for destruction
+                addCoffee(15); // Reward for destruction
                 sceneBuildings.splice(i, 1);
             }
         }
@@ -1685,9 +1705,25 @@ function updatePhysics(dt) {
                 }
             }
         }
+
     }
 
-    // Handle Smoke decay
+    // --- Scrap Collection Logic ---
+    // If it's a scrap metal block, collect it if the chassis rolls over it
+    for (let d of dirtBoxes) {
+        if (d.isScrap) {
+            let distToChassis = d.position.distanceToSquared(chassisWorldPos);
+            // Collect range is approx half the chassis length
+            if (distToChassis < 6.0) {
+                // Remove scrap, add currency and slightly heal engine heat
+                d.life = -1;
+                addCoffee(1);
+                engineHeat = Math.max(0, engineHeat - 5);
+            }
+        }
+    }
+
+    // Handle Smoke decay and Scrap Cleanup
     for (let i = dirtBoxes.length - 1; i >= 0; i--) {
         let d = dirtBoxes[i];
         if (d.isSmoke) {
@@ -1698,6 +1734,11 @@ function updatePhysics(dt) {
                 dirtBoxes.splice(i, 1);
                 continue;
             }
+        }
+        if (d.isScrap && d.life <= 0) {
+             // Removed via scrap collection or expired
+             dirtBoxes.splice(i, 1);
+             continue;
         }
     }
 
@@ -1981,6 +2022,10 @@ function render(now) {
         gameFuelTruck.draw(gl, program, viewMatrix, projectionMatrix);
     }
 
+    if (typeof gameCars !== 'undefined') {
+        gameCars.forEach(c => { c.updateMatrix(null); c.draw(gl, program, viewMatrix, projectionMatrix); });
+    }
+
     // Draw Particles
     for (let p of particles) {
         if (p.active) {
@@ -2020,17 +2065,10 @@ function render(now) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, groundIndexBuffer);
     gl.drawElements(gl.TRIANGLES, groundIndexCount, gl.UNSIGNED_INT, 0);
 
-    // Road plane overlay
+    // Road networks overlay
     gl.uniform1i(gl.getUniformLocation(program, 'uIsGround'), 0); // Disable procedural grid for road
-    let roadScaleZ = 800; // Increased length for the bigger map
-    let roadScaleX = 20; // Wider road for the city
-    let roadMat = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, 0.5, 0)); // Slightly above ground
-    let roadColor = [0.2, 0.2, 0.22, 1.0]; // Dark grey asphalt
 
-    let roadModelViewMatrix = new Matrix4().multiplyMatrices(viewMatrix, roadMat);
-    let roadNormalMatrix = new Matrix4().copy(roadModelViewMatrix);
-
-    // Bind basic cube buffers for road
+    // Bind basic cube buffers for roads once
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.vertexAttribPointer(gl.getAttribLocation(program, 'aVertexPosition'), 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(gl.getAttribLocation(program, 'aVertexPosition'));
@@ -2041,11 +2079,26 @@ function render(now) {
 
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
 
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadModelViewMatrix.elements);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadNormalMatrix.elements);
+    let roadColor = [0.2, 0.2, 0.22, 1.0]; // Dark grey asphalt
     gl.uniform4fv(gl.getUniformLocation(program, 'uColor'), roadColor);
 
+    // Main Avenue (Z-axis)
+    let roadScaleZ = 800;
+    let roadScaleX = 25; // Wider road
+    let roadMatZ = new Matrix4().makeScale(roadScaleX, 0.1, roadScaleZ).multiply(new Matrix4().makeTranslation(0, 0.5, 0));
+    let roadMVZ = new Matrix4().multiplyMatrices(viewMatrix, roadMatZ);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, roadMVZ.elements);
+    gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, roadMVZ.elements);
     gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+
+    // Cross Streets (X-axis)
+    for (let z = -20; z <= 300; z += 105) {
+        let crossMat = new Matrix4().makeScale(400, 0.1, 15).multiply(new Matrix4().makeTranslation(0, 0.51, z));
+        let crossMV = new Matrix4().multiplyMatrices(viewMatrix, crossMat);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uModelViewMatrix'), false, crossMV.elements);
+        gl.uniformMatrix4fv(gl.getUniformLocation(program, 'uNormalMatrix'), false, crossMV.elements);
+        gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_SHORT, 0);
+    }
 
 
     requestAnimationFrame(render);
@@ -2181,6 +2234,7 @@ function loadLevel(levelIndex) {
     sceneBuildings = [];
     soldiers = [];
     gameTanks = [];
+    gameCars = [];
     gameAPC = null;
     gameFuelTruck = null;
     initialDebrisInPath = 0;
@@ -2211,8 +2265,16 @@ function loadLevel(levelIndex) {
             gameTanks.push(t);
         }
 
+        gameCars = [];
+        for (let i=0; i<3; i++) {
+            let car = buildCar(false);
+            car.position.set((Math.random()-0.5)*20, 1.5, 20 + Math.random()*20);
+            car.rotation.y = Math.PI;
+            gameCars.push(car);
+        }
+
         // Add lots of running soldiers
-        for(let i=0; i<15; i++) {
+        for(let i=0; i<20 + levelIndex; i++) {
             soldiers.push(buildSoldier(true, (Math.random()-0.5)*50, 10 + Math.random()*30));
         }
 
@@ -2220,7 +2282,7 @@ function loadLevel(levelIndex) {
 
         dirtBoxes = [];
         // Spawn dirt specifically blocking the gap between WallF1 and WallF2 (x=-5 to 5, z=28 to 32)
-        for(let i=0; i<40; i++) {
+        for(let i=0; i<40 + (levelIndex * 5); i++) {
             let d = new Node("Dirt");
             let s = 1.5 + Math.random()*2.5; // Bigger blocks
             d.scale.set(s,s,s);
@@ -2240,8 +2302,15 @@ function loadLevel(levelIndex) {
         targetHQ.isTarget = true;
         sceneBuildings.push(targetHQ);
 
-        for(let i = 0; i < 5 + levelIndex; i++) {
-            soldiers.push(buildSoldier(true, (Math.random()-0.5)*20, 30 + Math.random()*5));
+        for(let i = 0; i < 15 + levelIndex * 2; i++) {
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*30, 20 + Math.random()*20));
+        }
+
+        gameCars = [];
+        for (let i=0; i<4; i++) {
+            let car = buildCar(Math.random() < 0.5); // Random cops and civs
+            car.position.set((Math.random()-0.5)*20, 1.5, 10 + Math.random()*20);
+            gameCars.push(car);
         }
 
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Destroy the Enemy HQ at the end of the road!`;
@@ -2255,12 +2324,20 @@ function loadLevel(levelIndex) {
             gameTanks.push(t);
         }
 
+        gameCars = [];
+        for (let i=0; i<5; i++) {
+            let car = buildCar(true); // Cops rushing to ambush
+            car.position.set((Math.random()-0.5)*20, 1.5, 30 + Math.random()*20);
+            car.rotation.y = Math.PI;
+            gameCars.push(car);
+        }
+
         for(let i = 0; i < 6; i++) {
             soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, -10 + Math.random()*5));
         }
 
         // Increase enemy count based on endless level
-        for(let i = 0; i < 10 + (levelIndex * 2); i++) {
+        for(let i = 0; i < 20 + (levelIndex * 3); i++) {
             soldiers.push(buildSoldier(true, (Math.random()-0.5)*40, 20 + Math.random()*30));
         }
 
@@ -2425,6 +2502,7 @@ let sceneRamps = [];
 
 let sceneBuildings = [];
 let gameTanks = [];
+let gameCars = [];
 let gameAPC = null;
 let gameFuelTruck = null;
 let soldiers = [];
@@ -2541,32 +2619,60 @@ function buildFuelTruck() {
     let root = new Node("Oshkosh");
     root.position.set(-15, 1.5, -30);
 
-    // Cab
+    // Main Chassis frame
+    let frame = new Node("Frame");
+    frame.scale.set(1.0, 0.3, 8.0);
+    frame.position.set(0, -0.8, -0.5);
+    frame.color = [0.1, 0.1, 0.1, 1.0];
+    root.add(frame);
+
+    // Cab Base
     let cab = new Node("TruckCab");
-    cab.scale.set(2.2, 1.8, 2.5);
-    cab.position.set(0, 0, 2);
+    cab.scale.set(2.2, 1.0, 2.2);
+    cab.position.set(0, -0.2, 2.5);
     cab.color = [0.8, 0.7, 0.2, 1.0]; // Desert tan
     root.add(cab);
 
+    // Cab Top (Windows)
+    let cabTop = new Node("TruckCabTop");
+    cabTop.scale.set(2.0, 0.8, 1.8);
+    cabTop.position.set(0, 0.7, 2.5);
+    cabTop.color = [0.1, 0.2, 0.3, 0.9]; // Glass color
+    root.add(cabTop);
+
+    // Exhaust stack
+    let stack = new Node("ExhaustStack");
+    stack.scale.set(0.15, 1.5, 0.15);
+    stack.position.set(1.0, 1.0, 1.5);
+    stack.color = [0.3, 0.3, 0.3, 1.0];
+    root.add(stack);
+
     // Tanker
     let tank = new Node("FuelTank");
-    tank.scale.set(2.0, 2.0, 5.0);
+    tank.scale.set(2.2, 2.0, 5.5);
     tank.position.set(0, 0, -2);
     tank.color = [0.7, 0.6, 0.2, 1.0];
     root.add(tank);
 
-    // Wheels
-    for(let i=0; i<3; i++) {
-        let zPos = 2.5 - i * 2.5;
+    // Wheels (Oshkosh 8x8 setup)
+    for(let i=0; i<4; i++) {
+        let zPos = 3.0 - i * 2.2;
+
+        let axle = new Node("Axle");
+        axle.scale.set(2.5, 0.15, 0.15);
+        axle.position.set(0, -0.9, zPos);
+        axle.color = [0.1, 0.1, 0.1, 1.0];
+        root.add(axle);
+
         let wL = new Node("WheelL");
-        wL.scale.set(0.5, 1.0, 1.0);
-        wL.position.set(-1.3, -0.6, zPos);
+        wL.scale.set(0.5, 1.1, 1.1);
+        wL.position.set(-1.3, -0.9, zPos);
         wL.color = [0.1, 0.1, 0.1, 1.0];
         root.add(wL);
 
         let wR = new Node("WheelR");
-        wR.scale.set(0.5, 1.0, 1.0);
-        wR.position.set(1.3, -0.6, zPos);
+        wR.scale.set(0.5, 1.1, 1.1);
+        wR.position.set(1.3, -0.9, zPos);
         wR.color = [0.1, 0.1, 0.1, 1.0];
         root.add(wR);
     }
@@ -2578,44 +2684,176 @@ function buildTank() {
     let tankRoot = new Node("Tank");
     tankRoot.position.set(0, 1.5, -15); // Start far behind the bulldozer
 
-    // Tank Body
+    // Lower Hull
+    let hullLower = new Node("HullLower");
+    hullLower.scale.set(2.6, 0.8, 4.8);
+    hullLower.position.set(0, -0.2, 0);
+    hullLower.color = [0.2, 0.3, 0.15, 1.0]; // Darker olive
+    tankRoot.add(hullLower);
+
+    // Upper Hull (sloped front)
     let body = new Node("TankBody");
-    body.scale.set(3, 1.2, 5);
+    body.scale.set(3.2, 0.6, 5.2);
+    body.position.set(0, 0.5, 0);
     body.color = [0.3, 0.4, 0.2, 1.0]; // Olive green
     tankRoot.add(body);
 
-    // Tank Turret
+    // Tank Turret Base
+    let turretBase = new Node("TankTurretBase");
+    turretBase.scale.set(2.2, 0.4, 2.8);
+    turretBase.position.set(0, 1.0, -0.5);
+    turretBase.color = [0.25, 0.35, 0.15, 1.0];
+    tankRoot.add(turretBase);
+
+    // Tank Turret Top
     let turret = new Node("TankTurret");
-    turret.scale.set(2, 1, 2.5);
-    turret.position.set(0, 1.1, -0.5);
-    turret.color = [0.25, 0.35, 0.15, 1.0];
-    tankRoot.add(turret);
+    turret.scale.set(1.8, 0.6, 2.4);
+    turret.position.set(0, 0.5, 0); // Relative to turretBase
+    turret.color = [0.28, 0.38, 0.18, 1.0];
+    turretBase.add(turret);
 
     // Tank Barrel
     let barrel = new Node("TankBarrel");
-    barrel.scale.set(0.3, 0.3, 4);
-    barrel.position.set(0, 1.1, 2.5);
+    barrel.scale.set(0.25, 0.25, 3.5);
+    barrel.position.set(0, 0, 3.0);
     barrel.color = [0.2, 0.2, 0.2, 1.0];
-    tankRoot.add(barrel);
+    turret.add(barrel);
 
-    // Simple Tank Tracks
+    // Barrel Fume Extractor
+    let extractor = new Node("FumeExtractor");
+    extractor.scale.set(0.35, 0.35, 0.8);
+    extractor.position.set(0, 0, 1.5);
+    extractor.color = [0.25, 0.35, 0.15, 1.0];
+    barrel.add(extractor);
+
+    // Muzzle Flash node (hidden by default via alpha 0)
+    let flash = new Node("MuzzleFlash");
+    flash.scale.set(1.5, 1.5, 1.5);
+    flash.position.set(0, 0, 1.8);
+    flash.color = [1.0, 0.8, 0.2, 0.0];
+    barrel.add(flash);
+    tankRoot.muzzleFlashNode = flash;
+
+    // Tank Tracks & Wheels
     let tLeft = new Node("TankTrackL");
-    tLeft.scale.set(0.6, 1.0, 5.2);
+    tLeft.scale.set(0.6, 1.2, 5.4);
     tLeft.position.set(-1.8, -0.1, 0);
     tLeft.color = [0.1, 0.1, 0.1, 1.0];
     tankRoot.add(tLeft);
 
     let tRight = new Node("TankTrackR");
-    tRight.scale.set(0.6, 1.0, 5.2);
+    tRight.scale.set(0.6, 1.2, 5.4);
     tRight.position.set(1.8, -0.1, 0);
     tRight.color = [0.1, 0.1, 0.1, 1.0];
     tankRoot.add(tRight);
 
+    // Add visual road wheels inside the tracks
+    for(let i=0; i<6; i++) {
+        let zPos = 2.0 - (i * 0.8);
+
+        let wheelL = new Node("RoadWheelL");
+        wheelL.scale.set(0.65, 0.8, 0.8);
+        wheelL.position.set(-1.8, -0.3, zPos);
+        wheelL.color = [0.2, 0.2, 0.2, 1.0];
+        tankRoot.add(wheelL);
+
+        let wheelR = new Node("RoadWheelR");
+        wheelR.scale.set(0.65, 0.8, 0.8);
+        wheelR.position.set(1.8, -0.3, zPos);
+        wheelR.color = [0.2, 0.2, 0.2, 1.0];
+        tankRoot.add(wheelR);
+    }
+
     return tankRoot;
+}
+
+function buildCar(isCop) {
+    let carRoot = new Node(isCop ? "CopCar" : "CivilianCar");
+    carRoot.position.set(0, 1.0, 0);
+
+    // Car body colors
+    let col1 = [Math.random(), Math.random(), Math.random(), 1.0];
+    if (isCop) col1 = [0.1, 0.1, 0.8, 1.0]; // Blue cop car
+
+    // Lower body
+    let body = new Node("CarBody");
+    body.scale.set(1.8, 0.6, 4.0);
+    body.position.set(0, -0.2, 0);
+    body.color = col1;
+    carRoot.add(body);
+
+    // Cabin (Greenhouse)
+    let cabin = new Node("CarCabin");
+    cabin.scale.set(1.5, 0.6, 2.0);
+    cabin.position.set(0, 0.4, -0.2);
+    cabin.color = [0.1, 0.1, 0.1, 0.9]; // Windows
+    carRoot.add(cabin);
+
+    // Wheels
+    let wZ = [-1.2, 1.2];
+    for (let z of wZ) {
+        let wL = new Node("WheelL");
+        wL.scale.set(0.2, 0.6, 0.6);
+        wL.position.set(-0.9, -0.4, z);
+        wL.color = [0.1, 0.1, 0.1, 1.0];
+        carRoot.add(wL);
+
+        let wR = new Node("WheelR");
+        wR.scale.set(0.2, 0.6, 0.6);
+        wR.position.set(0.9, -0.4, z);
+        wR.color = [0.1, 0.1, 0.1, 1.0];
+        carRoot.add(wR);
+    }
+
+    if (isCop) {
+        let sirens = new Node("Sirens");
+        sirens.scale.set(1.0, 0.1, 0.3);
+        sirens.position.set(0, 0.8, -0.2);
+        sirens.color = [0.8, 0.1, 0.1, 1.0];
+        carRoot.add(sirens);
+    }
+
+    carRoot.isSquashed = false;
+    carRoot.isCar = true;
+
+    return carRoot;
 }
 
 function updateGameLogic(dt) {
     if (gameState !== "PLAYING") return;
+
+    // Civilian / Cop Car AI
+    if (typeof gameCars !== 'undefined') {
+        for (let i = 0; i < gameCars.length; i++) {
+            let c = gameCars[i];
+            if (c.isDead || c.isSquashed) continue;
+
+            // Basic drive forward
+            let speed = c.name === "CopCar" ? 15.0 : 8.0;
+            c.position.z += speed * dt;
+            c.position.y = getTerrainHeightBase(c.position.x, c.position.z) + 0.6;
+
+            // Loop back if they drive too far
+            if (c.position.z > d9Root.position.z + 100) {
+                c.position.z = d9Root.position.z - 100;
+                c.position.x = (Math.random() - 0.5) * 30; // Random lane
+            }
+
+            if (c.name === "CopCar") {
+                // Siren flash
+                if (typeof c.sirenPhase === 'undefined') c.sirenPhase = 0;
+                c.sirenPhase += dt * 10.0;
+                let sirens = c.children.find(ch => ch.name === "Sirens");
+                if (sirens) {
+                    if (Math.sin(c.sirenPhase) > 0) {
+                        sirens.color = [0.9, 0.1, 0.1, 1.0]; // Red
+                    } else {
+                        sirens.color = [0.1, 0.1, 0.9, 1.0]; // Blue
+                    }
+                }
+            }
+        }
+    }
 
     // Convoy Patrol AI State Machine
     for (let i = 0; i < gameTanks.length; i++) {
@@ -2834,46 +3072,127 @@ function updateGameLogic(dt) {
 function createBuilding(name, width, height, depth, x, z, color) {
     let b = new Node(name);
     b.scale.set(width, height, depth);
-    // Position y based on terrain height so it sits properly
     let terrainY = getTerrainHeight(x, z);
     b.position.set(x, terrainY + height / 2, z);
     b.color = color;
     b.isBuilding = true;
-    // Lower health so driving through buildings is more fluid
-    b.health = 40;
-    b.maxHealth = 40;
+    b.health = 40 + (width * depth * 0.1); // Slightly tougher large buildings
+    b.maxHealth = b.health;
 
-    // Create some windows
-    let numWindowsX = Math.max(1, Math.floor(width / 3));
-    let numWindowsY = Math.max(1, Math.floor(height / 4));
+    let isApartment = height > 20 && width > 15;
+    let isSkyscraper = height > 40;
 
-    for (let wy = 0; wy < numWindowsY; wy++) {
+    // Roof detailing
+    let roofParapet = new Node("Parapet");
+    roofParapet.scale.set(width, 0.5, depth);
+    roofParapet.position.set(0, height/2 + 0.25, 0);
+    roofParapet.color = [color[0]*0.8, color[1]*0.8, color[2]*0.8, 1.0];
+    b.add(roofParapet);
+
+    let roofAC = new Node("ACUnit");
+    roofAC.scale.set(2, 1.5, 2);
+    roofAC.position.set(width*0.2, height/2 + 1.0, -depth*0.2);
+    roofAC.color = [0.7, 0.7, 0.7, 1.0];
+    b.add(roofAC);
+
+    // Create windows & balconies
+    let floorHeight = 4.0;
+    let numFloors = Math.floor(height / floorHeight);
+    let numWindowsX = Math.max(1, Math.floor(width / 4));
+    let numWindowsZ = Math.max(1, Math.floor(depth / 4));
+
+    let winColor = isSkyscraper ? [0.6, 0.8, 0.9, 0.9] : [0.15, 0.15, 0.2, 1.0];
+
+    for (let floor = 0; floor < numFloors; floor++) {
+        let ly = -height/2 + (floor * floorHeight) + 2.0;
+
+        // Ground floor gets doors/storefronts instead of normal windows sometimes
+        let isGround = (floor === 0);
+
         for (let wx = 0; wx < numWindowsX; wx++) {
-            // Front windows
-            let winF = new Node("WindowF");
-            winF.scale.set(1.5, 2, 0.2);
-            // Local space relative to building
             let lx = -width/2 + (width / numWindowsX) * (wx + 0.5);
-            let ly = -height/2 + 3 + (height / numWindowsY) * wy;
-            winF.position.set(lx, ly, depth/2 + 0.1);
-            winF.color = [0.2, 0.2, 0.4, 1.0]; // Dark window color
-            b.add(winF);
 
-            // Back windows
+            // Front Side
+            if (isGround && wx === Math.floor(numWindowsX/2)) {
+                // Main Door
+                let door = new Node("MainDoor");
+                door.scale.set(3, 3, 0.3);
+                door.position.set(lx, ly - 0.5, depth/2 + 0.1);
+                door.color = isSkyscraper ? [0.4, 0.4, 0.4, 1.0] : [0.3, 0.15, 0.05, 1.0];
+                b.add(door);
+
+                // Awning
+                if (isApartment) {
+                    let awning = new Node("Awning");
+                    awning.scale.set(3.5, 0.2, 2.0);
+                    awning.position.set(lx, ly + 1.2, depth/2 + 1.0);
+                    awning.rotation.x = 0.2;
+                    awning.color = [0.8, 0.2, 0.2, 1.0]; // Red awning
+                    b.add(awning);
+                }
+            } else {
+                let winF = new Node("WindowF");
+                winF.scale.set(2.0, 2.5, 0.2);
+                winF.position.set(lx, ly, depth/2 + 0.1);
+                winF.color = winColor;
+                b.add(winF);
+
+                // Balconies for apartments
+                if (isApartment && !isGround && Math.random() < 0.6) {
+                    let balcony = new Node("Balcony");
+                    balcony.scale.set(2.8, 0.2, 1.5);
+                    balcony.position.set(lx, ly - 1.2, depth/2 + 0.75);
+                    balcony.color = [0.5, 0.5, 0.5, 1.0];
+                    b.add(balcony);
+
+                    let railing = new Node("Railing");
+                    railing.scale.set(2.8, 1.0, 0.1);
+                    railing.position.set(lx, ly - 0.7, depth/2 + 1.5);
+                    railing.color = [0.2, 0.2, 0.2, 1.0];
+                    b.add(railing);
+                }
+            }
+
+            // Back Side
             let winB = new Node("WindowB");
-            winB.scale.set(1.5, 2, 0.2);
+            winB.scale.set(2.0, 2.5, 0.2);
             winB.position.set(lx, ly, -depth/2 - 0.1);
-            winB.color = [0.2, 0.2, 0.4, 1.0];
+            winB.color = winColor;
             b.add(winB);
+        }
+
+        // Left/Right sides
+        for (let wz = 0; wz < numWindowsZ; wz++) {
+            let lz = -depth/2 + (depth / numWindowsZ) * (wz + 0.5);
+
+            let winL = new Node("WindowL");
+            winL.scale.set(0.2, 2.5, 2.0);
+            winL.position.set(-width/2 - 0.1, ly, lz);
+            winL.color = winColor;
+            b.add(winL);
+
+            let winR = new Node("WindowR");
+            winR.scale.set(0.2, 2.5, 2.0);
+            winR.position.set(width/2 + 0.1, ly, lz);
+            winR.color = winColor;
+            b.add(winR);
         }
     }
 
-    // Single Door
-    let door = new Node("Door");
-    door.scale.set(2, 3, 0.3);
-    door.position.set(0, -height/2 + 1.5, depth/2 + 0.1);
-    door.color = [0.3, 0.2, 0.1, 1.0]; // Brown door
-    b.add(door);
+    // Add some visual structural columns for skyscrapers
+    if (isSkyscraper) {
+        let colL = new Node("ColL");
+        colL.scale.set(1.0, height, 1.0);
+        colL.position.set(-width/2 + 0.5, 0, depth/2 + 0.2);
+        colL.color = [0.4, 0.4, 0.45, 1.0];
+        b.add(colL);
+
+        let colR = new Node("ColR");
+        colR.scale.set(1.0, height, 1.0);
+        colR.position.set(width/2 - 0.5, 0, depth/2 + 0.2);
+        colR.color = [0.4, 0.4, 0.45, 1.0];
+        b.add(colR);
+    }
 
     return b;
 }
@@ -2912,26 +3231,33 @@ function buildScenery() {
         [0.9, 0.85, 0.8, 1.0],  // off-white
         [0.8, 0.8, 0.8, 1.0],   // light grey
         [0.75, 0.7, 0.65, 1.0], // tan
-        [0.8, 0.75, 0.7, 1.0]   // warm grey
+        [0.8, 0.75, 0.7, 1.0],  // warm grey
+        [0.7, 0.75, 0.8, 1.0],  // blueish tint
+        [0.85, 0.7, 0.7, 1.0]   // reddish tint
     ];
 
-    for (let x = -150; x <= 150; x += 30) {
-        for (let z = 10; z <= 250; z += 30) {
-            // Leave center road area somewhat clear
-            if (Math.abs(x) < 20 && z < 100) continue;
+    for (let x = -200; x <= 200; x += 35) {
+        for (let z = -50; z <= 350; z += 35) {
+            // Main wide avenue clearing
+            if (Math.abs(x) < 30) continue;
+
+            // Cross streets clearing (every 3 blocks)
+            if (z % 105 < 20) continue;
 
             // Skip where mosque is
-            if (x > 10 && x < 50 && z > 20 && z < 60) continue;
+            if (x > 10 && x < 60 && z > 10 && z < 70) continue;
 
             // 80% chance for a building in this block
             if (Math.random() < 0.8) {
-                // Random size
-                let w = 15 + Math.random() * 10;
-                let d = 15 + Math.random() * 10;
-                let h = 10 + Math.random() * 40; // varying heights
+                // Random size (more realistic blocky dimensions)
+                let w = 15 + Math.random() * 15;
+                let d = 15 + Math.random() * 15;
+                let h = 15 + Math.random() * 30; // varying heights
 
-                // Some taller buildings
-                if (Math.random() < 0.1) h += 30;
+                // Skyscraper chance (more common further from center)
+                if (Math.random() < 0.2 && Math.abs(x) > 50) {
+                    h += 50 + Math.random() * 50;
+                }
 
                 let cx = x + (Math.random() * 10 - 5);
                 let cz = z + (Math.random() * 10 - 5);
@@ -2940,6 +3266,33 @@ function buildScenery() {
                 buildings.push(createBuilding(`Bldg_${x}_${z}`, w, h, d, cx, cz, col));
             }
         }
+    }
+
+    // Streetlights
+    for (let z = -20; z < 300; z += 40) {
+        let l1 = new Node("LightL");
+        l1.scale.set(0.5, 8, 0.5);
+        l1.position.set(-25, 4, z);
+        l1.color = [0.2, 0.2, 0.2, 1.0];
+        buildings.push(l1);
+
+        let l1Top = new Node("LightTopL");
+        l1Top.scale.set(3, 0.5, 0.5);
+        l1Top.position.set(1.5, 4, 0);
+        l1Top.color = [0.9, 0.9, 0.7, 1.0]; // bulb
+        l1.add(l1Top);
+
+        let l2 = new Node("LightR");
+        l2.scale.set(0.5, 8, 0.5);
+        l2.position.set(25, 4, z);
+        l2.color = [0.2, 0.2, 0.2, 1.0];
+        buildings.push(l2);
+
+        let l2Top = new Node("LightTopR");
+        l2Top.scale.set(3, 0.5, 0.5);
+        l2Top.position.set(-1.5, 4, 0);
+        l2Top.color = [0.9, 0.9, 0.7, 1.0];
+        l2.add(l2Top);
     }
 
     return buildings;
