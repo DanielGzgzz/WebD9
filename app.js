@@ -303,6 +303,12 @@ const fsSource = `
             highp float noise = fract(sin(dot(vWorldPos.xz, vec2(12.9898, 78.233))) * 43758.5453);
             baseColor.rgb *= 0.9 + (noise * 0.1);
 
+            // Mix in some procedural grass patches based on distance and noise
+            highp float grassNoise = fract(sin(dot(floor(vWorldPos.xz * 0.1), vec2(42.9898, 18.233))) * 43758.5453);
+            if (grassNoise > 0.75) {
+                baseColor.rgb = mix(baseColor.rgb, vec3(0.4, 0.55, 0.2), (grassNoise - 0.75) * 4.0); // Green grass patches
+            }
+
             // Scale world position for the grid size
             highp vec2 grid = floor(vWorldPos.xz * 5.0); // 5 unit grid blocks
             highp float checker = mod(grid.x + grid.y, 2.0);
@@ -476,25 +482,47 @@ function initBuffers(gl) {
         let z = (i * segmentSize) - halfSize;
         for (let j = 0; j <= segments; j++) {
             let x = (j * segmentSize) - halfSize;
-            let y = Math.sin(x * 0.1) * 2.0 + Math.cos(z * 0.1) * 2.0;
+
+            // We use getTerrainHeightBase so the visual mesh perfectly aligns with the physics floor.
+            // But we must wait for that function to be hoisted or define it here.
+            // Since it's just `Math.sin(x*0.02) * 1.5 + Math.cos(z*0.02) * 1.5;`
+            let y = Math.sin(x * 0.02) * 1.5 + Math.cos(z * 0.02) * 1.5;
+
+            // If it is on the main road, flatten it to a specific y
+            if (abs(x) < 25) {
+                 y = 0.5; // flatten the road exactly so the road plane sits perfectly
+            } else if (abs(x) < 40) {
+                 // smooth transition
+                 let t = (abs(x) - 25) / 15;
+                 y = 0.5 * (1-t) + y * t;
+            }
+
+            // Same for cross streets
+            if (z % 105 > -15 && z % 105 < 15) {
+                 if (abs(x) >= 40) { // Don't double apply on main road
+                     y = 0.5;
+                 }
+            }
 
             groundPositions.push(x, y, z);
 
-            // Analytical derivatives for normal
-            // f(x,z) = 2*sin(0.1*x) + 2*cos(0.1*z)
-            // df/dx = 0.2 * cos(0.1*x)
-            // df/dz = -0.2 * sin(0.1*z)
-            let dx = 0.2 * Math.cos(x * 0.1);
-            let dz = -0.2 * Math.sin(z * 0.1);
-
-            // Normal vector is (-df/dx, 1, -df/dz) normalized
-            let nx = -dx;
-            let ny = 1.0;
-            let nz = -dz;
-            let len = Math.sqrt(nx*nx + ny*ny + nz*nz);
-            groundNormals.push(nx/len, ny/len, nz/len);
+            // Approximate normals (since we introduced flat zones, exact analytical is trickier to inline perfectly)
+            // We'll just use simple derivative for the rolling parts and point up for the flat parts
+            let nx = 0.0, ny = 1.0, nz = 0.0;
+            if (abs(x) >= 40 && !(z % 105 > -15 && z % 105 < 15)) {
+                let dx = 1.5 * 0.02 * Math.cos(x * 0.02);
+                let dz = -1.5 * 0.02 * Math.sin(z * 0.02);
+                nx = -dx;
+                nz = -dz;
+                let len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+                nx/=len; ny/=len; nz/=len;
+            }
+            groundNormals.push(nx, ny, nz);
         }
     }
+
+    // Helper for abs
+    function abs(v) { return Math.abs(v); }
 
     for (let i = 0; i < segments; i++) {
         for (let j = 0; j < segments; j++) {
@@ -974,50 +1002,7 @@ function buildD9() {
     spillGuard.color = catYellow; // Back of blade is yellow
     d9Blade.add(spillGuard);
 
-
-    // --- Child 6: Rear Ripper Assembly ---
-    // Single shank heavy ripper
-    let ripperGroup = new Node("RipperGroup");
-    ripperGroup.position.set(0, -0.2, -2.5);
-    ripperGroup.isDrawable = false;
-    d9Root.add(ripperGroup);
-
-    // Ripper mounting frame
-    let ripperFrame = new Node("RipperFrame");
-    ripperFrame.scale.set(1.4, 1.2, 0.6);
-    ripperFrame.position.set(0, 0.2, -0.3);
-    ripperFrame.color = catYellow;
-    ripperGroup.add(ripperFrame);
-
-    // Main heavy shank
-    let ripperShank = new Node("RipperShank");
-    ripperShank.scale.set(0.4, 2.5, 0.6);
-    ripperShank.position.set(0, -0.5, -0.8);
-    ripperShank.rotation.x = -0.2; // Pointed down and forward slightly
-    ripperShank.color = catBlack;
-    ripperGroup.add(ripperShank);
-
-    // Ripper tooth (hardened steel)
-    let ripperTooth = new Node("RipperTooth");
-    ripperTooth.scale.set(0.45, 0.4, 0.7);
-    ripperTooth.position.set(0, -1.2, 0.2);
-    ripperTooth.rotation.x = 0.3;
-    ripperTooth.color = darkGray;
-    ripperShank.add(ripperTooth);
-
-    // Ripper hydraulic cylinder (Visual)
-    let ripCyl = new Node("RipCyl");
-    ripCyl.scale.set(0.25, 1.2, 0.25);
-    ripCyl.position.set(0, 1.0, -0.6);
-    ripCyl.rotation.x = -0.5;
-    ripCyl.color = catYellow;
-    ripperGroup.add(ripCyl);
-
-    let ripRod = new Node("RipRod");
-    ripRod.scale.set(0.12, 1.0, 0.12);
-    ripRod.position.set(0, -0.8, 0);
-    ripRod.color = silver;
-    ripCyl.add(ripRod);
+    // Note: Rear Ripper Assembly removed based on user feedback.
 }
 
 function buildTrackFrame(parentNode, trackColor, yellowColor) {
@@ -1157,9 +1142,10 @@ function updateDashboard(speed, rpm, psi) {
 function updateKinematics(dt) {
     if (!d9Root) return;
 
-    const baseMoveSpeed = 20.0; // Faster top speed
-    const maxTurnSpeed = 2.0;
-    const turnAccel = 12.0; // Snappier turning response
+    // Slightly buffed speed to make map traversal more fun
+    const baseMoveSpeed = 26.0;
+    const maxTurnSpeed = 2.5;
+    const turnAccel = 15.0; // Snappier turning response
     const bladeSpeed = 2.0 * dt;
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
@@ -1178,11 +1164,11 @@ function updateKinematics(dt) {
         if (checkAABBCollision(dirt.position, size, bladeWorldPos, bladeSize)) bladePushCount += 1;
     }
 
-    // Smoother, heavier pushing feel without completely stalling
-    let pushResistance = Math.min(0.5, bladePushCount * 0.005);
-    let dragFactor = Math.min(0.3, dirtDrag * 0.01);
+    // Lower resistance to make the D9 feel more unstoppable and fun
+    let pushResistance = Math.min(0.3, bladePushCount * 0.003);
+    let dragFactor = Math.min(0.2, dirtDrag * 0.005);
 
-    let combinedResistance = Math.min(0.6, dragFactor + pushResistance);
+    let combinedResistance = Math.min(0.4, dragFactor + pushResistance);
     let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
 
     let targetVelocity = 0;
@@ -1192,8 +1178,8 @@ function updateKinematics(dt) {
     // Disable movement if engine is dead
     if (isEngineDead) targetVelocity = 0;
 
-    // Faster, punchier acceleration so it feels powerful
-    let accel = 25.0 * dt;
+    // Punchier acceleration so it feels highly responsive
+    let accel = 35.0 * dt;
     if (d9Velocity < targetVelocity) {
         d9Velocity = Math.min(d9Velocity + accel, targetVelocity);
     } else if (d9Velocity > targetVelocity) {
@@ -1269,7 +1255,9 @@ function updateKinematics(dt) {
     let heightBack = getTerrainHeightBase(backTrackX, backTrackZ);
 
     // Desired base height (average of front and back tracks)
-    let targetY = (heightFront + heightBack) / 2 + 1; // +1 for chassis center offset from ground
+    // The chassis center is roughly 1.4 units above the track bottom based on the model geometry.
+    // Setting +1.4 prevents it from submerging into the ground visually.
+    let targetY = (heightFront + heightBack) / 2 + 1.4;
     // Negate the pitch difference because our rotation X is inverted visually
     let targetPitch = -Math.atan2(heightFront - heightBack, wheelBase);
 
@@ -1681,7 +1669,7 @@ function updatePhysics(dt) {
         if (s.isDead) continue;
 
         let sPos = s.position;
-        let sSize = new Vector3(0.6, 1.2, 0.4);
+        let sSize = new Vector3(1.2, 2.4, 0.8); // Updated to match new scaled up size
 
         let hitBlade = checkAABBCollision(sPos, sSize, bladeWorldPos, bladeSize);
         let hitChassis = checkAABBCollision(sPos, sSize, chassisWorldPos, chassisSize);
@@ -1809,9 +1797,9 @@ function updatePhysics(dt) {
             let lateralForce = (sideDot > 0) ? 1.0 : -1.0;
 
             // Pushing power (Forward + outward lateral arc)
-            let pushForce = 16.0; // Fling the dirt away nicely
-            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.6;
-            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.6;
+            let pushForce = 22.0 + Math.abs(d9Velocity) * 0.5; // More satisfying/explosive block flinging
+            dirt.velocity.x = forward.x * pushForce + rightVec.x * lateralForce * pushForce * 0.8;
+            dirt.velocity.z = forward.z * pushForce + rightVec.z * lateralForce * pushForce * 0.8;
 
         } else {
             // Apply Gravity
@@ -2100,6 +2088,22 @@ function render(now) {
         });
     }
 
+    if (typeof gameAPC !== 'undefined' && gameAPC) {
+        if (cameraPos.distanceToSquared(gameAPC.position) < maxDrawDistSq) {
+            gameAPC.updateMatrix(null);
+            gameAPC.draw(gl, program, viewMatrix, projectionMatrix);
+        }
+    }
+
+    if (typeof soldiers !== 'undefined') {
+        soldiers.forEach(s => {
+            if (cameraPos.distanceToSquared(s.position) < maxDrawDistSq) {
+                s.updateMatrix(null);
+                s.draw(gl, program, viewMatrix, projectionMatrix);
+            }
+        });
+    }
+
     // Draw Particles
     for (let p of particles) {
         if (p.active) {
@@ -2331,7 +2335,6 @@ function loadLevel(levelIndex) {
     currentMissionType = Math.floor(Math.random() * 3) + 1;
 
     if (currentMissionType === 1) {
-        sceneRamps = buildRamp();
         // Add city scenery to the expanded wall mission area
         sceneBuildings.push(...buildScenery());
 
@@ -2358,21 +2361,26 @@ function loadLevel(levelIndex) {
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the City Wall gate!`;
 
         dirtBoxes = [];
-        // Spawn dirt specifically blocking the gap between WallF1 and WallF2 (x=-5 to 5, z=28 to 32)
-        for(let i=0; i<40 + (levelIndex * 5); i++) {
+        // Spawn dirt specifically blocking the gap between WallF1 and WallF2
+        // Make it more numerous but smaller, gray/concrete colored rubble
+        let debrisCount = 80 + (levelIndex * 10);
+        for(let i=0; i<debrisCount; i++) {
             let d = new Node("Dirt");
-            let s = 1.5 + Math.random()*2.5; // Bigger blocks
+            let s = 0.8 + Math.random()*1.2; // Smaller blocks
             d.scale.set(s,s,s);
-            // Spread the dirt slightly wider since the gate might be visually wider now
-            d.position.set(-8 + Math.random()*16, 5, 28 + Math.random()*4);
-            d.color = [0.5, 0.4, 0.4, 1.0]; // Concrete colored rubble
+            // Spread the dirt wider and deeper for a good pile
+            d.position.set(-12 + Math.random()*24, 3 + Math.random()*5, 27 + Math.random()*6);
+
+            // Concrete / Asphalt colors
+            let cVar = 0.3 + Math.random()*0.3;
+            d.color = [cVar, cVar, cVar + 0.05, 1.0];
+
             d.velocity = new Vector3();
             d.isSleeping = false;
             d.radius = s*0.6;
             dirtBoxes.push(d);
         }
     } else if (currentMissionType === 2) {
-        sceneRamps = buildRamp();
         sceneBuildings = buildScenery();
 
         let targetHQ = createBuilding("EnemyHQ", 20, 30, 20, 0, 40, [0.3, 0.3, 0.3, 1.0]);
@@ -2522,60 +2530,53 @@ const RAMP_HEIGHT = 4.0;
 const RAMP_WIDTH = 8.0;
 
 function getTerrainHeightBase(x, z) {
-    // Generate flatter desert/urban terrain
-    return Math.sin(x*0.02) * 1.5 + Math.cos(z*0.02) * 1.5;
+    // Keep this perfectly in sync with the visual ground generation in initBuffers!
+    let y = Math.sin(x * 0.02) * 1.5 + Math.cos(z * 0.02) * 1.5;
+
+    // Road flattening logic
+    let ax = Math.abs(x);
+    if (ax < 25) {
+        y = 0.5;
+    } else if (ax < 40) {
+        let t = (ax - 25) / 15;
+        y = 0.5 * (1 - t) + y * t;
+    }
+
+    if (z % 105 > -15 && z % 105 < 15) {
+        if (ax >= 40) {
+            y = 0.5;
+        }
+    }
+
+    return y;
 }
 
 function getTerrainHeight(x, z) {
     let baseH = getTerrainHeightBase(x, z);
 
-    // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over
-    let gridKey = getGridKey(x, z);
-    if (debrisGrid && debrisGrid.has(gridKey)) {
-        let nearby = debrisGrid.get(gridKey);
-        let maxPileHeight = baseH;
-        for(let dirt of nearby) {
-            if (!dirt.isSleeping) continue;
+    // Treat sleeping mud piles or heavily stacked dirt as terrain the D9 can drive over.
+    // Instead of using the debrisGrid (which only tracks active flying debris), we check all dirtBoxes.
+    // Since there are only ~100 dirt boxes, an O(N) check here per track point is very fast.
+    let maxPileHeight = baseH;
+    for (let dirt of dirtBoxes) {
+        if (!dirt.isSleeping || dirt.isScrap) continue; // Only climb over sleeping, non-scrap dirt
+
+        let dx = dirt.position.x - x;
+        let dz = dirt.position.z - z;
+        // If we are roughly within the footprint of this sleeping block
+        if (dx * dx + dz * dz < dirt.radius * dirt.radius) {
             let dirtTopY = dirt.position.y + (dirt.scale.y / 2);
             if (dirtTopY > maxPileHeight) {
                 maxPileHeight = dirtTopY;
             }
         }
-        if (maxPileHeight > baseH + 0.5) return maxPileHeight;
     }
+
+    if (maxPileHeight > baseH + 0.3) return maxPileHeight;
     return baseH;
 }
 
-let rampNode;
-function buildRamp() {
-    let length = RAMP_END - RAMP_START;
-
-    // Calculate hypotenuse to properly size the box to stretch from start to end
-    let hypotenuse = Math.sqrt(RAMP_HEIGHT*RAMP_HEIGHT + length*length);
-    let angle = Math.atan2(RAMP_HEIGHT, length);
-
-    rampNode = new Node("Ramp");
-    // Make it thin but stretch the full hypotenuse length
-    rampNode.scale.set(RAMP_WIDTH, 0.2, hypotenuse);
-    rampNode.rotation.x = -angle; // Lean up
-
-    // Align visual top surface perfectly with the mathematical getTerrainHeight plane
-    // Adjust y pos downwards by half its thickness to prevent hovering
-    rampNode.position.set(0, (RAMP_HEIGHT / 2) - 0.1, (RAMP_START + RAMP_END) / 2);
-    rampNode.color = [0.25, 0.45, 0.15, 1.0];
-
-    // Flat top part
-    let rampTopNode = new Node("RampTop");
-    rampTopNode.scale.set(RAMP_WIDTH, RAMP_HEIGHT, 5);
-    // Align the very top face to mathematically perfectly equal RAMP_HEIGHT
-    rampTopNode.position.set(0, RAMP_HEIGHT / 2, RAMP_END + 2.5);
-    rampTopNode.color = [0.2, 0.4, 0.1, 1.0];
-
-    // We add them directly to the scene drawing logic later
-    return [rampNode, rampTopNode];
-}
-
-let sceneRamps = [];
+let sceneRamps = []; // Kept empty, removed ramp logic per user feedback
 
 let sceneBuildings = [];
 let gameTanks = [];
@@ -2591,11 +2592,12 @@ const CHAIN_LENGTH = 12.0;
 
 function buildSoldier(isEnemy, x, z) {
     let sRoot = new Node(isEnemy ? "Enemy" : "Friendly");
-    sRoot.position.set(x, getTerrainHeight(x, z) + 0.9, z);
+    sRoot.position.set(x, getTerrainHeight(x, z) + 1.8, z);
 
+    // Scale up soldiers by 2x to make them clearly visible
     // Body
     let body = new Node("Body");
-    body.scale.set(0.6, 1.2, 0.4);
+    body.scale.set(1.2, 2.4, 0.8);
     body.position.set(0, 0, 0);
     // Green (Friendly) vs Orange/Brown (Enemy)
     body.color = isEnemy ? [0.8, 0.4, 0.1, 1.0] : [0.2, 0.6, 0.2, 1.0];
@@ -2603,15 +2605,15 @@ function buildSoldier(isEnemy, x, z) {
 
     // Head
     let head = new Node("Head");
-    head.scale.set(0.4, 0.4, 0.4);
-    head.position.set(0, 0.8, 0);
+    head.scale.set(0.8, 0.8, 0.8);
+    head.position.set(0, 1.6, 0);
     head.color = [0.9, 0.7, 0.6, 1.0];
     sRoot.add(head);
 
     sRoot.isEnemy = isEnemy;
     sRoot.isDead = false;
     sRoot.health = 20;
-    sRoot.speed = 1.0 + Math.random() * 1.5;
+    sRoot.speed = 2.0 + Math.random() * 2.0; // Scaled up speed slightly too
     sRoot.state = "IDLE"; // IDLE, RUN, SQUISHED
     sRoot.stateTimer = Math.random() * 2;
 
@@ -2649,7 +2651,7 @@ function buildAPC() {
 function explodeBuilding(b) {
     // Generate rubble based on building size
     let volume = b.scale.x * b.scale.y * b.scale.z;
-    let rubbleCount = Math.min(100, Math.floor(volume / 5)); // Cap rubble count for performance
+    let rubbleCount = Math.min(60, Math.floor(volume / 8)); // Capped slightly lower to maintain FPS during big city crunches
 
     for (let i = 0; i < rubbleCount; i++) {
         let rx = b.position.x + (Math.random() - 0.5) * b.scale.x;
@@ -2664,12 +2666,12 @@ function explodeBuilding(b) {
         if (d9Root && typeof d9Velocity !== 'undefined') {
             let chMat = d9Root.worldMatrix.elements;
             let forward = new Vector3(-chMat[8], -chMat[9], -chMat[10]).normalize();
-            hitMomentum = forward.multiplyScalar(d9Velocity * 0.8);
+            hitMomentum = forward.multiplyScalar(d9Velocity * 1.2); // Fling it harder
         }
 
         // Explosive velocity outward from center + Dozer hit momentum
         let vx = (rx - b.position.x) * 2.0 + hitMomentum.x;
-        let vy = 5.0 + Math.random() * 5.0; // Shoot up
+        let vy = 8.0 + Math.random() * 8.0; // Shoot up harder
         let vz = (rz - b.position.z) * 2.0 + hitMomentum.z;
         dirt.velocity = new Vector3(vx, vy, vz);
 
@@ -2761,32 +2763,43 @@ function buildTank() {
     let tankRoot = new Node("Tank");
     tankRoot.position.set(0, 1.5, -15); // Start far behind the bulldozer
 
+    // Steel / Urban Camo Colors
+    const armorColor = [0.4, 0.45, 0.5, 1.0];
+    const darkArmor = [0.3, 0.35, 0.4, 1.0];
+
     // Lower Hull
     let hullLower = new Node("HullLower");
     hullLower.scale.set(2.6, 0.8, 4.8);
     hullLower.position.set(0, -0.2, 0);
-    hullLower.color = [0.2, 0.3, 0.15, 1.0]; // Darker olive
+    hullLower.color = darkArmor;
     tankRoot.add(hullLower);
 
-    // Upper Hull (sloped front)
-    let body = new Node("TankBody");
-    body.scale.set(3.2, 0.6, 5.2);
-    body.position.set(0, 0.5, 0);
-    body.color = [0.3, 0.4, 0.2, 1.0]; // Olive green
-    tankRoot.add(body);
+    // Upper Hull (sloped front illusion via multiple blocks)
+    let bodyMain = new Node("TankBodyMain");
+    bodyMain.scale.set(3.2, 0.6, 4.5);
+    bodyMain.position.set(0, 0.5, -0.35);
+    bodyMain.color = armorColor;
+    tankRoot.add(bodyMain);
+
+    let bodyFront = new Node("TankBodyFront");
+    bodyFront.scale.set(3.2, 0.6, 1.5);
+    bodyFront.position.set(0, 0.3, 2.5);
+    bodyFront.rotation.x = 0.3; // Sloped front armor
+    bodyFront.color = armorColor;
+    tankRoot.add(bodyFront);
 
     // Tank Turret Base
     let turretBase = new Node("TankTurretBase");
     turretBase.scale.set(2.2, 0.4, 2.8);
     turretBase.position.set(0, 1.0, -0.5);
-    turretBase.color = [0.25, 0.35, 0.15, 1.0];
+    turretBase.color = darkArmor;
     tankRoot.add(turretBase);
 
     // Tank Turret Top
     let turret = new Node("TankTurret");
-    turret.scale.set(1.8, 0.6, 2.4);
-    turret.position.set(0, 0.5, 0); // Relative to turretBase
-    turret.color = [0.28, 0.38, 0.18, 1.0];
+    turret.scale.set(1.8, 0.5, 2.8);
+    turret.position.set(0, 0.45, 0.2); // Offset forward
+    turret.color = armorColor;
     turretBase.add(turret);
 
     // Tank Barrel
@@ -2800,7 +2813,7 @@ function buildTank() {
     let extractor = new Node("FumeExtractor");
     extractor.scale.set(0.35, 0.35, 0.8);
     extractor.position.set(0, 0, 1.5);
-    extractor.color = [0.25, 0.35, 0.15, 1.0];
+    extractor.color = darkArmor;
     barrel.add(extractor);
 
     // Muzzle Flash node (hidden by default via alpha 0)
