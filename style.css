@@ -7,6 +7,20 @@ body {
 }
 
 
+#objectiveUI {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(30, 30, 30, 0.9);
+    color: #fff;
+    padding: 15px 20px;
+    border-radius: 8px;
+    border: 2px solid #555;
+    z-index: 100;
+    width: 300px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+
 #objectiveUI h2 {
     margin: 0 0 10px 0;
     font-size: 22px;
