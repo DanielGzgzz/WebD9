@@ -1243,14 +1243,6 @@ function updateKinematics(dt) {
     let backTrackZ = d9Root.position.z - forward.z * (wheelBase / 2);
     let backTrackX = d9Root.position.x - forward.x * (wheelBase / 2);
 
-    // Add high-frequency noise/shake if driving over rubble
-    let shakeOffset = 0;
-    let pitchShake = 0;
-    if (dirtDrag > 0 && Math.abs(d9Velocity) > 0.5) {
-        shakeOffset = (Math.random() - 0.5) * 0.1; // +/- 0.05 units Y
-        pitchShake = (Math.random() - 0.5) * 0.05; // +/- 0.025 rad pitch
-    }
-
     let heightFront = getTerrainHeightBase(frontTrackX, frontTrackZ);
     let heightBack = getTerrainHeightBase(backTrackX, backTrackZ);
 
@@ -1282,14 +1274,13 @@ function updateKinematics(dt) {
 
     if (d9Root.position.y <= targetY + 0.1) {
         // We hit the ground, interpolate position instead of snapping to prevent jitter
-        d9Root.position.y += (targetY - d9Root.position.y) * 10 * dt + shakeOffset;
-        if (d9Root.position.y < targetY) d9Root.position.y = targetY + shakeOffset;
+        d9Root.position.y += (targetY - d9Root.position.y) * 10 * dt;
+        if (d9Root.position.y < targetY) d9Root.position.y = targetY;
         d9VelocityY = 0; // stop falling
 
         // Match pitch to terrain only if grounded
-        // Interpolate pitch to target
-        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt; // Smoother pitch interpolation
-        d9Root.rotation.x += pitchShake; // add shake
+        // Interpolate pitch to target smoothly
+        d9Root.rotation.x += (targetPitch - d9Root.rotation.x) * 5 * dt;
 
         // Interpolate roll to target
         d9Root.rotation.z += (targetRoll - d9Root.rotation.z) * 5 * dt;
@@ -2047,14 +2038,14 @@ function render(now) {
         window.currentTargetPos = idealTargetPos.clone();
         window.forceCameraReset = false;
     } else {
-        // Smoother, slightly slower interpolation for a heavier feel
-        window.currentCameraPos.x += (targetCameraPos.x - window.currentCameraPos.x) * 8 * dt;
-        window.currentCameraPos.y += (targetCameraPos.y - window.currentCameraPos.y) * 8 * dt;
-        window.currentCameraPos.z += (targetCameraPos.z - window.currentCameraPos.z) * 8 * dt;
+        // Smoother, slower interpolation for a steady, cinematic, non-dizzying feel
+        window.currentCameraPos.x += (targetCameraPos.x - window.currentCameraPos.x) * 5 * dt;
+        window.currentCameraPos.y += (targetCameraPos.y - window.currentCameraPos.y) * 5 * dt;
+        window.currentCameraPos.z += (targetCameraPos.z - window.currentCameraPos.z) * 5 * dt;
 
-        window.currentTargetPos.x += (idealTargetPos.x - window.currentTargetPos.x) * 10 * dt;
-        window.currentTargetPos.y += (idealTargetPos.y - window.currentTargetPos.y) * 10 * dt;
-        window.currentTargetPos.z += (idealTargetPos.z - window.currentTargetPos.z) * 10 * dt;
+        window.currentTargetPos.x += (idealTargetPos.x - window.currentTargetPos.x) * 8 * dt;
+        window.currentTargetPos.y += (idealTargetPos.y - window.currentTargetPos.y) * 8 * dt;
+        window.currentTargetPos.z += (idealTargetPos.z - window.currentTargetPos.z) * 8 * dt;
     }
     let cameraPos = window.currentCameraPos;
     let targetPos = window.currentTargetPos;
@@ -2330,7 +2321,8 @@ function loadLevel(levelIndex) {
     currentLevel = levelIndex;
 
     // Instead of resetting the player to Z=0, we generate the new level ahead of the player!
-    let zOffset = d9Root ? Math.floor(d9Root.position.z) + 100 : 0;
+    // Push the offset further ahead (300 units) so new buildings don't pop-in right in front of the camera
+    let zOffset = d9Root ? Math.floor(d9Root.position.z) + 300 : 0;
 
     // Clear old state (we keep D9 state and upgrade logic intact)
     dirtBoxes = [];
@@ -2350,12 +2342,12 @@ function loadLevel(levelIndex) {
     gameState = "PLAYING";
     gameWon = false;
 
-    // Generate Border Walls for this block
-    let wl = createBuilding("WallL", 10, 20, 1600, -100, zOffset + 600, [0.3, 0.3, 0.3, 1.0]);
+    // Generate Border Walls for this block (Extends from behind the player to far ahead)
+    let wl = createBuilding("WallL", 10, 20, 2000, -100, zOffset + 200, [0.3, 0.3, 0.3, 1.0]);
     wl.isDestroyed = false; // indestructible
     sceneBuildings.push(wl);
 
-    let wr = createBuilding("WallR", 10, 20, 1600, 100, zOffset + 600, [0.3, 0.3, 0.3, 1.0]);
+    let wr = createBuilding("WallR", 10, 20, 2000, 100, zOffset + 200, [0.3, 0.3, 0.3, 1.0]);
     wr.isDestroyed = false;
     sceneBuildings.push(wr);
 
@@ -2373,15 +2365,16 @@ function loadLevel(levelIndex) {
 
     if (currentMissionType === 1) {
         // Front blockade (with gap at x=0)
-        let wf1 = createBuilding("WallF1", 400, 20, 10, -205, zOffset + 30, [0.3, 0.3, 0.3, 1.0]);
-        let wf2 = createBuilding("WallF2", 400, 20, 10, 205, zOffset + 30, [0.3, 0.3, 0.3, 1.0]);
+        let wf1 = createBuilding("WallF1", 400, 20, 10, -205, zOffset + 150, [0.3, 0.3, 0.3, 1.0]);
+        let wf2 = createBuilding("WallF2", 400, 20, 10, 205, zOffset + 150, [0.3, 0.3, 0.3, 1.0]);
         sceneBuildings.push(wf1);
         sceneBuildings.push(wf2);
 
         gameTanks = [];
         for(let i=0; i<3; i++) {
             let t = buildTank();
-            t.position.set((Math.random()-0.5)*10, 1.5, zOffset - 20 - (i*15));
+            // Tanks spawn slightly ahead of player to show they need escorting
+            t.position.set((Math.random()-0.5)*10, 1.5, d9Root.position.z + 50 - (i*15));
             gameTanks.push(t);
         }
 
@@ -2395,7 +2388,7 @@ function loadLevel(levelIndex) {
 
         // Add lots of running soldiers
         for(let i=0; i<20 + levelIndex; i++) {
-            soldiers.push(buildSoldier(true, (Math.random()-0.5)*50, zOffset + 10 + Math.random()*30));
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*50, zOffset + 50 + Math.random()*100));
         }
 
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Clear the debris blocking the City Wall gate!`;
@@ -2408,7 +2401,7 @@ function loadLevel(levelIndex) {
             let s = 0.8 + Math.random()*1.2; // Smaller blocks
             d.scale.set(s,s,s);
             // Spread the dirt wider and deeper for a good pile
-            d.position.set(-12 + Math.random()*24, 3 + Math.random()*5, zOffset + 27 + Math.random()*6);
+            d.position.set(-12 + Math.random()*24, 3 + Math.random()*5, zOffset + 147 + Math.random()*6);
 
             // Concrete / Asphalt colors
             let cVar = 0.3 + Math.random()*0.3;
@@ -2420,48 +2413,48 @@ function loadLevel(levelIndex) {
             dirtBoxes.push(d);
         }
     } else if (currentMissionType === 2) {
-        let targetHQ = createBuilding("EnemyHQ", 20, 30, 20, 0, zOffset + 140, [0.3, 0.3, 0.3, 1.0]);
+        let targetHQ = createBuilding("EnemyHQ", 20, 30, 20, 0, zOffset + 200, [0.3, 0.3, 0.3, 1.0]);
         targetHQ.isTarget = true;
         sceneBuildings.push(targetHQ);
 
         for(let i = 0; i < 15 + levelIndex * 2; i++) {
-            soldiers.push(buildSoldier(true, (Math.random()-0.5)*30, zOffset + 20 + Math.random()*60));
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*30, zOffset + 50 + Math.random()*150));
         }
 
         gameCars = [];
         for (let i=0; i<4; i++) {
             let car = buildCar(Math.random() < 0.5); // Random cops and civs
-            car.position.set((Math.random()-0.5)*20, 1.5, zOffset + 10 + Math.random()*50);
+            car.position.set((Math.random()-0.5)*20, 1.5, zOffset + 30 + Math.random()*150);
             gameCars.push(car);
         }
 
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Destroy the Enemy HQ at the end of the road!`;
     } else if (currentMissionType === 3) {
         gameAPC = buildAPC();
-        gameAPC.position.set(0, 1.5, zOffset - 20);
+        gameAPC.position.set(0, 1.5, d9Root.position.z + 40);
 
         gameTanks = [];
         for(let i=0; i<3; i++) {
             let t = buildTank();
-            t.position.set((Math.random()-0.5)*10, 1.5, zOffset - 40 - (i*15));
+            t.position.set((Math.random()-0.5)*10, 1.5, d9Root.position.z + 20 - (i*15));
             gameTanks.push(t);
         }
 
         gameCars = [];
         for (let i=0; i<5; i++) {
             let car = buildCar(true); // Cops rushing to ambush
-            car.position.set((Math.random()-0.5)*20, 1.5, zOffset + 30 + Math.random()*50);
+            car.position.set((Math.random()-0.5)*20, 1.5, zOffset + 50 + Math.random()*100);
             car.rotation.y = Math.PI;
             gameCars.push(car);
         }
 
         for(let i = 0; i < 6; i++) {
-            soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, zOffset - 10 + Math.random()*5));
+            soldiers.push(buildSoldier(false, (Math.random()-0.5)*10, d9Root.position.z + 30 + Math.random()*20));
         }
 
         // Increase enemy count based on endless level
         for(let i = 0; i < 20 + (levelIndex * 3); i++) {
-            soldiers.push(buildSoldier(true, (Math.random()-0.5)*40, zOffset + 20 + Math.random()*80));
+            soldiers.push(buildSoldier(true, (Math.random()-0.5)*40, zOffset + 50 + Math.random()*150));
         }
 
         document.getElementById("objectiveText").innerText = `Mission ${levelIndex}: Lead the convoy through the ambush!`;
@@ -2656,17 +2649,23 @@ function buildSoldier(isEnemy, x, z) {
     sRoot.add(head);
 
     if (!isEnemy) {
-        // Green helmet for soldiers
+        // Rounder, better-proportioned helmet for soldiers
         let helmet = new Node("Helmet");
-        helmet.scale.set(0.9, 0.5, 0.9);
-        helmet.position.set(0, 1.8, 0);
+        helmet.scale.set(0.95, 0.6, 0.95);
+        helmet.position.set(0, 2.1, 0); // Positioned correctly on top of the head
         helmet.color = [0.2, 0.3, 0.2, 1.0];
         sRoot.add(helmet);
+
+        let brim = new Node("HelmetBrim");
+        brim.scale.set(1.0, 0.1, 1.05);
+        brim.position.set(0, 1.85, 0.05);
+        brim.color = [0.2, 0.3, 0.2, 1.0];
+        sRoot.add(brim);
     }
 
     // Weapon (M16 vs AK profile)
     let weapon = new Node("Weapon");
-    weapon.position.set(0.4, 0, 0.6);
+    weapon.position.set(0.4, 0.2, 0.6);
     sRoot.add(weapon);
 
     let gunBody = new Node("GunBody");
@@ -2677,35 +2676,54 @@ function buildSoldier(isEnemy, x, z) {
     mag.color = [0.15, 0.15, 0.15, 1.0];
     weapon.add(mag);
 
+    let barrel = new Node("GunBarrel");
+    barrel.color = [0.1, 0.1, 0.1, 1.0];
+    weapon.add(barrel);
+
     if (isEnemy) {
         // AK profile (curved mag, wood stock/grip accents)
-        gunBody.scale.set(0.2, 0.3, 1.5);
-        mag.scale.set(0.15, 0.6, 0.3);
-        mag.position.set(0, -0.4, 0.2);
-        mag.rotation.x = -0.2; // Curved forward
+        gunBody.scale.set(0.15, 0.25, 1.0);
+
+        barrel.scale.set(0.08, 0.08, 0.8);
+        barrel.position.set(0, 0.05, 0.8);
+
+        mag.scale.set(0.12, 0.5, 0.25);
+        mag.position.set(0, -0.25, 0.2);
+        mag.rotation.x = -0.3; // Curved forward
 
         let stock = new Node("Stock");
-        stock.scale.set(0.15, 0.2, 0.6);
-        stock.position.set(0, -0.1, -0.8);
+        stock.scale.set(0.12, 0.2, 0.6);
+        stock.position.set(0, -0.1, -0.7);
+        stock.rotation.x = 0.1;
         stock.color = [0.5, 0.3, 0.1, 1.0]; // Wood
         weapon.add(stock);
 
         let handguard = new Node("Handguard");
-        handguard.scale.set(0.22, 0.2, 0.5);
+        handguard.scale.set(0.18, 0.15, 0.4);
         handguard.position.set(0, 0, 0.6);
         handguard.color = [0.5, 0.3, 0.1, 1.0]; // Wood
         weapon.add(handguard);
     } else {
         // M16 profile (straight mag, long barrel, carry handle)
-        gunBody.scale.set(0.2, 0.3, 1.8);
-        mag.scale.set(0.15, 0.5, 0.3);
-        mag.position.set(0, -0.3, 0);
+        gunBody.scale.set(0.15, 0.25, 1.2);
+
+        barrel.scale.set(0.08, 0.08, 1.0);
+        barrel.position.set(0, 0.05, 1.0);
+
+        mag.scale.set(0.12, 0.4, 0.25);
+        mag.position.set(0, -0.25, 0.1);
 
         let handle = new Node("CarryHandle");
-        handle.scale.set(0.1, 0.3, 0.6);
-        handle.position.set(0, 0.3, -0.2);
+        handle.scale.set(0.05, 0.2, 0.5);
+        handle.position.set(0, 0.2, -0.1);
         handle.color = [0.15, 0.15, 0.15, 1.0];
         weapon.add(handle);
+
+        let stock = new Node("M16Stock");
+        stock.scale.set(0.12, 0.25, 0.6);
+        stock.position.set(0, -0.05, -0.8);
+        stock.color = [0.1, 0.1, 0.1, 1.0];
+        weapon.add(stock);
     }
 
     sRoot.isEnemy = isEnemy;
@@ -2975,7 +2993,7 @@ function buildTank() {
 
 function buildCar(isCop) {
     let carRoot = new Node(isCop ? "CopCar" : "CivilianCar");
-    carRoot.position.set(0, 1.0, 0);
+    carRoot.position.set(0, 1.0, 0); // Note: Initial Y is overridden dynamically in the update loop by +1.0 offset
 
     // Car body colors
     let col1 = [Math.random(), Math.random(), Math.random(), 1.0];
@@ -3037,7 +3055,7 @@ function updateGameLogic(dt) {
             // Basic drive forward
             let speed = c.name === "CopCar" ? 15.0 : 8.0;
             c.position.z += speed * dt;
-            c.position.y = getTerrainHeightBase(c.position.x, c.position.z) + 0.6;
+            c.position.y = getTerrainHeightBase(c.position.x, c.position.z) + 1.0; // Fixed sinking cars
 
             // Avoid the bulldozer
             let distToD9 = c.position.distanceTo(d9Root.position);
