@@ -1089,6 +1089,13 @@ window.addEventListener('keydown', (e) => {
             closeGarage();
         }
     }
+
+    if (e.key === 'h' || e.key === 'H') {
+        const uiContent = document.getElementById('ui-content');
+        if (uiContent) {
+            uiContent.style.display = uiContent.style.display === 'none' ? 'block' : 'none';
+        }
+    }
 });
 
 window.addEventListener('keyup', (e) => {
@@ -2011,7 +2018,7 @@ function render(now) {
     const fieldOfView = 50 * Math.PI / 180; // slightly wider FOV for better awareness
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     const zNear = 0.5;
-    const zFar = 150.0; // Extend draw distance slightly to match the culling range
+    const zFar = 1500.0; // Vastly extended draw distance so things don't disappear
     projectionMatrix.makePerspective(fieldOfView, aspect, zNear, zFar);
 
     // Make camera follow D9 loosely
@@ -2084,8 +2091,8 @@ function render(now) {
 
     // --- View Frustum / Distance Culling ---
     // Instead of full frustum planes, we use a simple distance check from camera
-    // This dramatically reduces draw calls for dense city grids
-    const maxDrawDistSq = 150 * 150;
+    // Expanded distance to stop tanks, buildings and troops popping out.
+    const maxDrawDistSq = 1500 * 1500;
     let drawnBuildings = 0;
 
     // Draw Dirt / Rubble / Limbs
