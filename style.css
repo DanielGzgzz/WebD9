@@ -77,7 +77,6 @@ canvas {
     background-color: rgba(255, 255, 255, 0.8);
     padding: 10px 20px;
     border-radius: 5px;
-    pointer-events: none;
 }
 
 #ui h2 {
@@ -121,7 +120,6 @@ canvas {
     background-color: rgba(255, 255, 255, 0.8);
     padding: 10px 20px;
     border-radius: 5px;
-    pointer-events: none;
     z-index: 50;
 }
 
@@ -204,6 +202,52 @@ canvas {
     z-index: 200;
     pointer-events: none;
     animation: chainPulse 1s infinite alternate;
+}
+
+#compassContainer {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 2px solid #555;
+    border-radius: 5px;
+    overflow: hidden;
+    color: white;
+    font-weight: bold;
+    font-family: monospace;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+
+#compassRose {
+    position: absolute;
+    width: 1200px;
+    height: 100%;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    transition: transform 0.1s linear;
+}
+
+.compass-dir {
+    position: absolute;
+    width: 30px;
+    text-align: center;
+    font-size: 18px;
+    transform: translateX(-15px);
+}
+
+#compassTick {
+    position: absolute;
+    top: 0;
+    left: 150px;
+    transform: translateX(-50%);
+    color: red;
+    font-size: 16px;
+    z-index: 10;
 }
 @keyframes chainPulse {
     from { opacity: 0.7; transform: translate(-50%, -50%) scale(0.95); }

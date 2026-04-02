@@ -1219,6 +1219,39 @@ function updateKinematics(dt) {
 
     updateDashboard(d9Velocity, currentRPM, currentPSI);
 
+    // Update Compass
+    if (d9Root) {
+        let heading = d9Root.rotation.y;
+        // Normalize heading between 0 and 2PI
+        let normalizedHeading = heading % (Math.PI * 2);
+        if (normalizedHeading < 0) normalizedHeading += Math.PI * 2;
+
+        let compassRose = document.getElementById("compassRose");
+        if (compassRose) {
+            // Set N E S W positions once:
+            if (!window.compassInitialized) {
+                compassRose.innerHTML = '';
+                const directions = [
+                    { label: 'N', deg: 0 }, { label: 'E', deg: 90 }, { label: 'S', deg: 180 }, { label: 'W', deg: 270 },
+                    { label: 'N', deg: 360 }, { label: 'E', deg: 450 }, { label: 'S', deg: 540 }, { label: 'W', deg: 630 },
+                    { label: 'N', deg: -360 }, { label: 'E', deg: -270 }, { label: 'S', deg: -180 }, { label: 'W', deg: -90 }
+                ];
+                directions.forEach(d => {
+                    let span = document.createElement('span');
+                    span.className = 'compass-dir';
+                    span.innerText = d.label;
+                    span.style.left = `${(d.deg / 360) * 1200}px`;
+                    if(d.label === 'N') span.style.color = '#ff4444';
+                    compassRose.appendChild(span);
+                });
+                window.compassInitialized = true;
+            }
+
+            let pxOffset = (normalizedHeading / (Math.PI * 2)) * 1200;
+            compassRose.style.transform = `translateX(${150 - pxOffset}px)`;
+        }
+    }
+
     // Left/Right: Rotation Y (with momentum)
     let targetTurn = 0;
     if (keys['ArrowLeft']) {
@@ -1925,6 +1958,11 @@ class Particle {
 let particles = [];
 const MAX_PARTICLES = 50;
 
+let groundPositionBuffer;
+let groundNormalBuffer;
+let groundIndexBuffer;
+let groundIndexCount = 0;
+
 function initParticles() {
     for (let i = 0; i < MAX_PARTICLES; i++) {
         particles.push(new Particle());
@@ -2330,6 +2368,7 @@ function loadLevel(levelIndex) {
     // Instead of resetting the player to Z=0, we generate the new level ahead of the player!
     // Push the offset further ahead (300 units) so new buildings don't pop-in right in front of the camera
     let zOffset = d9Root ? Math.floor(d9Root.position.z) + 300 : 0;
+    window.currentLevelZOffset = zOffset;
 
     // Clear old state (we keep D9 state and upgrade logic intact)
     dirtBoxes = [];
@@ -3226,9 +3265,10 @@ function updateGameLogic(dt) {
         }
 
         let remain = 0;
+        let targetZ = window.currentLevelZOffset || 0;
         for(let d of dirtBoxes) {
-            // Check if gap is clear (z=25 to 35, x=-10 to 10)
-            if (d.position.z > 25 && d.position.z < 35 && Math.abs(d.position.x) < 10) remain++;
+            // Check if gap is clear around the spawn point
+            if (d.position.z > targetZ + 140 && d.position.z < targetZ + 160 && Math.abs(d.position.x) < 15) remain++;
         }
         let currentDebrisInPath = remain;
 
