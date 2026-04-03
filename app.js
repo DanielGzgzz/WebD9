@@ -1161,7 +1161,6 @@ function updateKinematics(dt) {
     let dirtDrag = 0;
     let bladePushCount = 0;
 
-    d9Blade.updateMatrix(d9BladeArms.worldMatrix);
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
@@ -1342,7 +1341,6 @@ function updateKinematics(dt) {
 
     // Ground penetration check for blade (See-Saw effect)
     if (d9Blade) {
-        d9Root.updateMatrix(null); // Ensure matrices are ready
         let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
         let bladeTerrainY = getTerrainHeight(bladeWorldPos.x, bladeWorldPos.z);
         // If the blade bottom (approx -0.5 local Y offset) hits the ground, lift the chassis
@@ -1657,7 +1655,6 @@ function getMatrixTranslation(matrix) {
 function updatePhysics(dt) {
     if (!d9Blade) return;
 
-    d9Root.updateMatrix(null);
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
@@ -2022,7 +2019,6 @@ function updateParticles(dt) {
                 p.active = true;
                 p.life = 0;
                 // Start at exhaust world pos (approx top of pipe)
-                d9Root.updateMatrix(null);
                 let exhaustPos = getMatrixTranslation(d9Exhaust.worldMatrix);
                 // The exhaust local center is 0.5 up from its base (scale Y is 1)
                 // We'll just add a bit to Y to spawn at the tip
@@ -2071,6 +2067,13 @@ function render(now) {
     // Cap dt to prevent physics explosions on lag spikes or when tab is inactive
     const dt = Math.min(now - lastTime, 0.1);
     lastTime = now;
+
+    // --- Architecture Optimization: Centralize Main Node Updates ---
+    // Update the master scene graph matrix once per frame here before
+    // physics and kinematics, rather than redundantly calculating inside them.
+    if (d9Root) {
+        d9Root.updateMatrix(null);
+    }
 
     // Update
     updateKinematics(dt);
