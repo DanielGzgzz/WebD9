@@ -1151,8 +1151,8 @@ function updateKinematics(dt) {
 
     // Slightly buffed speed to make map traversal more fun
     const baseMoveSpeed = 26.0;
-    const maxTurnSpeed = 2.5;
-    const turnAccel = 15.0; // Snappier turning response
+    const maxTurnSpeed = 1.0;
+    const turnAccel = 5.0; // Slower, more realistic turning response
     const bladeSpeed = 2.0 * dt;
 
     let chassisWorldPos = getMatrixTranslation(d9Root.worldMatrix);
@@ -1221,10 +1221,10 @@ function updateKinematics(dt) {
 
     // Update Compass
     if (d9Root) {
-        let heading = d9Root.rotation.y;
-        // Normalize heading between 0 and 2PI
-        let normalizedHeading = heading % (Math.PI * 2);
-        if (normalizedHeading < 0) normalizedHeading += Math.PI * 2;
+        let headingDegrees = (d9Root.rotation.y * 180 / Math.PI);
+        // Map current heading to the compass wrap offset logic
+        let normalizedDeg = headingDegrees % 360;
+        if (normalizedDeg < 0) normalizedDeg += 360;
 
         let compassRose = document.getElementById("compassRose");
         if (compassRose) {
@@ -1232,9 +1232,9 @@ function updateKinematics(dt) {
             if (!window.compassInitialized) {
                 compassRose.innerHTML = '';
                 const directions = [
-                    { label: 'N', deg: 0 }, { label: 'E', deg: 90 }, { label: 'S', deg: 180 }, { label: 'W', deg: 270 },
-                    { label: 'N', deg: 360 }, { label: 'E', deg: 450 }, { label: 'S', deg: 540 }, { label: 'W', deg: 630 },
-                    { label: 'N', deg: -360 }, { label: 'E', deg: -270 }, { label: 'S', deg: -180 }, { label: 'W', deg: -90 }
+                    { label: 'N', deg: 0 }, { label: 'W', deg: 90 }, { label: 'S', deg: 180 }, { label: 'E', deg: 270 },
+                    { label: 'N', deg: 360 }, { label: 'W', deg: 450 }, { label: 'S', deg: 540 }, { label: 'E', deg: 630 },
+                    { label: 'N', deg: -360 }, { label: 'W', deg: -270 }, { label: 'S', deg: -180 }, { label: 'E', deg: -90 }
                 ];
                 directions.forEach(d => {
                     let span = document.createElement('span');
@@ -1247,16 +1247,22 @@ function updateKinematics(dt) {
                 window.compassInitialized = true;
             }
 
-            let pxOffset = (normalizedHeading / (Math.PI * 2)) * 1200;
+            // Because our world starts looking down positive Z,
+            // Turning left (positive Y rotation) means turning East visually (though math-wise it depends on camera mapping)
+            // If turning left (A key) feels like right on the compass, we invert the pxOffset.
+            // Actually, in WebGL +Z is backwards and -Z is forwards. But we map heading via Math.sin/Math.cos
+            // We use standard pxOffset, but swap E and W in the initialization array above.
+            let pxOffset = (normalizedDeg / 360) * 1200;
             compassRose.style.transform = `translateX(${150 - pxOffset}px)`;
         }
     }
 
     // Left/Right: Rotation Y (with momentum)
+    // Left turns left (positive Y rotation), Right turns right (negative Y rotation)
     let targetTurn = 0;
-    if (keys['ArrowLeft']) {
+    if (keys['ArrowLeft'] || keys['a'] || keys['A']) {
         targetTurn = maxTurnSpeed;
-    } else if (keys['ArrowRight']) {
+    } else if (keys['ArrowRight'] || keys['d'] || keys['D']) {
         targetTurn = -maxTurnSpeed;
     }
 
@@ -1776,6 +1782,36 @@ function updatePhysics(dt) {
                 s.position.x += sFwd.x * runSpeed * dt;
                 s.position.z += sFwd.z * runSpeed * dt;
                 s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.6;
+
+                // Animate running cycle using s.animPhase
+                s.animPhase += runSpeed * dt * 2.0;
+                let swing = Math.sin(s.animPhase);
+
+                if (s.animNodes) {
+                    s.animNodes.lArm.rotation.x = -swing;
+                    s.animNodes.lElbow.rotation.x = swing > 0 ? swing * 0.5 : 0;
+                    s.animNodes.rArm.rotation.x = swing;
+                    s.animNodes.rElbow.rotation.x = swing < 0 ? -swing * 0.5 : 0;
+
+                    s.animNodes.lLeg.rotation.x = swing * 0.8;
+                    s.animNodes.lKnee.rotation.x = swing < 0 ? -swing : 0;
+                    s.animNodes.rLeg.rotation.x = -swing * 0.8;
+                    s.animNodes.rKnee.rotation.x = swing > 0 ? swing : 0;
+                }
+            } else if (s.state === "IDLE") {
+                // Reset to default stance
+                s.animPhase = 0;
+                if (s.animNodes) {
+                    s.animNodes.lArm.rotation.x = -Math.PI / 6;
+                    s.animNodes.lElbow.rotation.x = -Math.PI / 4;
+                    s.animNodes.rArm.rotation.x = -Math.PI / 6;
+                    s.animNodes.rElbow.rotation.x = -Math.PI / 4;
+
+                    s.animNodes.lLeg.rotation.x = 0;
+                    s.animNodes.lKnee.rotation.x = 0;
+                    s.animNodes.rLeg.rotation.x = 0;
+                    s.animNodes.rKnee.rotation.x = 0;
+                }
             }
 
             // AI hiding behavior: if near tank, move to nearest building
@@ -2669,50 +2705,171 @@ const CHAIN_LENGTH = 12.0;
 
 function buildSoldier(isEnemy, x, z) {
     let sRoot = new Node(isEnemy ? "Enemy" : "Friendly");
-    sRoot.position.set(x, getTerrainHeight(x, z) + 1.8, z);
+    sRoot.position.set(x, getTerrainHeight(x, z) + 1.2, z);
+    sRoot.animPhase = Math.random() * Math.PI * 2; // Randomize start phase
 
-    // Body
-    let body = new Node("Body");
-    body.scale.set(1.2, 2.4, 0.8);
-    body.position.set(0, 0, 0);
-    body.color = isEnemy ? [0.1, 0.1, 0.1, 1.0] : [0.2, 0.3, 0.2, 1.0]; // Black vs Dark Olive
-    sRoot.add(body);
+    // Skin Tone
+    let skinColor = [0.9, 0.7, 0.6, 1.0];
+    let pantColor = isEnemy ? [0.4, 0.3, 0.2, 1.0] : [0.3, 0.4, 0.3, 1.0];
+    let shirtColor = isEnemy ? [0.15, 0.15, 0.15, 1.0] : [0.3, 0.4, 0.3, 1.0];
+
+    // Torso (Main structural body)
+    let torso = new Node("Torso");
+    torso.position.set(0, 0.6, 0);
+    sRoot.add(torso);
+
+    let chest = new Node("Chest");
+    chest.scale.set(0.9, 1.0, 0.5);
+    chest.position.set(0, 0, 0);
+    chest.color = shirtColor;
+    torso.add(chest);
+
+    // Belt / Pelvis
+    let pelvis = new Node("Pelvis");
+    pelvis.scale.set(0.85, 0.3, 0.45);
+    pelvis.position.set(0, -0.6, 0);
+    pelvis.color = pantColor;
+    torso.add(pelvis);
 
     if (isEnemy) {
-        // Green vest for terrorists
         let vest = new Node("Vest");
-        vest.scale.set(1.3, 1.2, 0.9);
-        vest.position.set(0, 0.2, 0);
-        vest.color = [0.2, 0.5, 0.2, 1.0];
-        sRoot.add(vest);
+        vest.scale.set(1.0, 0.9, 0.6);
+        vest.position.set(0, 0.05, 0);
+        vest.color = [0.2, 0.5, 0.2, 1.0]; // Terrorist tactical vest
+        torso.add(vest);
     }
 
     // Head
+    let headJoint = new Node("HeadJoint");
+    headJoint.position.set(0, 0.6, 0);
+    torso.add(headJoint);
+
     let head = new Node("Head");
-    head.scale.set(0.8, 0.8, 0.8);
-    head.position.set(0, 1.6, 0);
-    head.color = [0.9, 0.7, 0.6, 1.0];
-    sRoot.add(head);
+    head.scale.set(0.5, 0.6, 0.5);
+    head.position.set(0, 0.3, 0);
+    head.color = skinColor;
+    headJoint.add(head);
 
     if (!isEnemy) {
-        // Rounder, better-proportioned helmet for soldiers
         let helmet = new Node("Helmet");
-        helmet.scale.set(0.95, 0.6, 0.95);
-        helmet.position.set(0, 2.1, 0); // Positioned correctly on top of the head
+        helmet.scale.set(0.6, 0.3, 0.6);
+        helmet.position.set(0, 0.3, 0);
         helmet.color = [0.2, 0.3, 0.2, 1.0];
-        sRoot.add(helmet);
+        head.add(helmet);
 
         let brim = new Node("HelmetBrim");
-        brim.scale.set(1.0, 0.1, 1.05);
-        brim.position.set(0, 1.85, 0.05);
+        brim.scale.set(0.65, 0.05, 0.7);
+        brim.position.set(0, 0.1, 0.05);
         brim.color = [0.2, 0.3, 0.2, 1.0];
-        sRoot.add(brim);
+        head.add(brim);
+    } else {
+        // Balaclava / Mask for terrorist
+        let mask = new Node("Mask");
+        mask.scale.set(0.52, 0.4, 0.52);
+        mask.position.set(0, -0.1, 0);
+        mask.color = [0.1, 0.1, 0.1, 1.0];
+        head.add(mask);
     }
 
-    // Weapon (M16 vs AK profile)
+    // Arms
+    let shoulderL = new Node("ShoulderL");
+    shoulderL.position.set(-0.6, 0.4, 0);
+    torso.add(shoulderL);
+
+    let armUpL = new Node("ArmUpL");
+    armUpL.scale.set(0.25, 0.6, 0.25);
+    armUpL.position.set(0, -0.3, 0);
+    armUpL.color = shirtColor;
+    shoulderL.add(armUpL);
+
+    let elbowL = new Node("ElbowL");
+    elbowL.position.set(0, -0.3, 0);
+    armUpL.add(elbowL);
+
+    let armDownL = new Node("ArmDownL");
+    armDownL.scale.set(0.2, 0.6, 0.2);
+    armDownL.position.set(0, -0.3, 0);
+    armDownL.color = skinColor;
+    elbowL.add(armDownL);
+
+    let shoulderR = new Node("ShoulderR");
+    shoulderR.position.set(0.6, 0.4, 0);
+    torso.add(shoulderR);
+
+    let armUpR = new Node("ArmUpR");
+    armUpR.scale.set(0.25, 0.6, 0.25);
+    armUpR.position.set(0, -0.3, 0);
+    armUpR.color = shirtColor;
+    shoulderR.add(armUpR);
+
+    let elbowR = new Node("ElbowR");
+    elbowR.position.set(0, -0.3, 0);
+    armUpR.add(elbowR);
+
+    let armDownR = new Node("ArmDownR");
+    armDownR.scale.set(0.2, 0.6, 0.2);
+    armDownR.position.set(0, -0.3, 0);
+    armDownR.color = skinColor;
+    elbowR.add(armDownR);
+
+    // Legs
+    let hipL = new Node("HipL");
+    hipL.position.set(-0.25, -0.7, 0);
+    torso.add(hipL);
+
+    let legUpL = new Node("LegUpL");
+    legUpL.scale.set(0.3, 0.7, 0.3);
+    legUpL.position.set(0, -0.35, 0);
+    legUpL.color = pantColor;
+    hipL.add(legUpL);
+
+    let kneeL = new Node("KneeL");
+    kneeL.position.set(0, -0.35, 0);
+    legUpL.add(kneeL);
+
+    let legDownL = new Node("LegDownL");
+    legDownL.scale.set(0.25, 0.7, 0.25);
+    legDownL.position.set(0, -0.35, 0);
+    legDownL.color = pantColor;
+    kneeL.add(legDownL);
+
+    let shoeL = new Node("ShoeL");
+    shoeL.scale.set(0.28, 0.15, 0.4);
+    shoeL.position.set(0, -0.35, 0.05);
+    shoeL.color = [0.1, 0.1, 0.1, 1.0];
+    legDownL.add(shoeL);
+
+    let hipR = new Node("HipR");
+    hipR.position.set(0.25, -0.7, 0);
+    torso.add(hipR);
+
+    let legUpR = new Node("LegUpR");
+    legUpR.scale.set(0.3, 0.7, 0.3);
+    legUpR.position.set(0, -0.35, 0);
+    legUpR.color = pantColor;
+    hipR.add(legUpR);
+
+    let kneeR = new Node("KneeR");
+    kneeR.position.set(0, -0.35, 0);
+    legUpR.add(kneeR);
+
+    let legDownR = new Node("LegDownR");
+    legDownR.scale.set(0.25, 0.7, 0.25);
+    legDownR.position.set(0, -0.35, 0);
+    legDownR.color = pantColor;
+    kneeR.add(legDownR);
+
+    let shoeR = new Node("ShoeR");
+    shoeR.scale.set(0.28, 0.15, 0.4);
+    shoeR.position.set(0, -0.35, 0.05);
+    shoeR.color = [0.1, 0.1, 0.1, 1.0];
+    legDownR.add(shoeR);
+
+    // Weapon (M16 vs AK profile) held by Right Hand
     let weapon = new Node("Weapon");
-    weapon.position.set(0.4, 0.2, 0.6);
-    sRoot.add(weapon);
+    weapon.position.set(0, -0.2, 0.3);
+    weapon.rotation.x = -Math.PI / 2 + 0.2; // Point forward
+    armDownR.add(weapon);
 
     let gunBody = new Node("GunBody");
     gunBody.color = [0.15, 0.15, 0.15, 1.0];
@@ -2727,50 +2884,48 @@ function buildSoldier(isEnemy, x, z) {
     weapon.add(barrel);
 
     if (isEnemy) {
-        // AK profile (curved mag, wood stock/grip accents)
-        gunBody.scale.set(0.15, 0.25, 1.0);
+        // AK profile
+        gunBody.scale.set(0.1, 0.2, 0.8);
 
-        barrel.scale.set(0.08, 0.08, 0.8);
-        barrel.position.set(0, 0.05, 0.8);
+        barrel.scale.set(0.06, 0.06, 0.7);
+        barrel.position.set(0, 0.05, 0.7);
 
-        mag.scale.set(0.12, 0.5, 0.25);
-        mag.position.set(0, -0.25, 0.2);
-        mag.rotation.x = -0.3; // Curved forward
+        mag.scale.set(0.08, 0.4, 0.2);
+        mag.position.set(0, -0.2, 0.2);
+        mag.rotation.x = -0.3;
 
         let stock = new Node("Stock");
-        stock.scale.set(0.12, 0.2, 0.6);
-        stock.position.set(0, -0.1, -0.7);
+        stock.scale.set(0.1, 0.15, 0.5);
+        stock.position.set(0, -0.1, -0.6);
         stock.rotation.x = 0.1;
-        stock.color = [0.5, 0.3, 0.1, 1.0]; // Wood
+        stock.color = [0.5, 0.3, 0.1, 1.0];
         weapon.add(stock);
-
-        let handguard = new Node("Handguard");
-        handguard.scale.set(0.18, 0.15, 0.4);
-        handguard.position.set(0, 0, 0.6);
-        handguard.color = [0.5, 0.3, 0.1, 1.0]; // Wood
-        weapon.add(handguard);
     } else {
-        // M16 profile (straight mag, long barrel, carry handle)
-        gunBody.scale.set(0.15, 0.25, 1.2);
+        // M16 profile
+        gunBody.scale.set(0.1, 0.2, 1.0);
 
-        barrel.scale.set(0.08, 0.08, 1.0);
-        barrel.position.set(0, 0.05, 1.0);
+        barrel.scale.set(0.06, 0.06, 0.8);
+        barrel.position.set(0, 0.05, 0.9);
 
-        mag.scale.set(0.12, 0.4, 0.25);
-        mag.position.set(0, -0.25, 0.1);
-
-        let handle = new Node("CarryHandle");
-        handle.scale.set(0.05, 0.2, 0.5);
-        handle.position.set(0, 0.2, -0.1);
-        handle.color = [0.15, 0.15, 0.15, 1.0];
-        weapon.add(handle);
+        mag.scale.set(0.08, 0.3, 0.2);
+        mag.position.set(0, -0.2, 0.1);
 
         let stock = new Node("M16Stock");
-        stock.scale.set(0.12, 0.25, 0.6);
-        stock.position.set(0, -0.05, -0.8);
+        stock.scale.set(0.1, 0.2, 0.5);
+        stock.position.set(0, -0.05, -0.7);
         stock.color = [0.1, 0.1, 0.1, 1.0];
         weapon.add(stock);
     }
+
+    // Left hand grips the gun
+    shoulderL.rotation.x = -Math.PI / 2 + 0.3;
+    shoulderL.rotation.y = 0.5;
+    elbowL.rotation.x = -1.0;
+
+    // Right hand holds the handle
+    shoulderR.rotation.x = -Math.PI / 2 + 0.5;
+    shoulderR.rotation.y = -0.2;
+    elbowR.rotation.x = -0.5;
 
     sRoot.isEnemy = isEnemy;
     sRoot.isDead = false;
@@ -2778,6 +2933,15 @@ function buildSoldier(isEnemy, x, z) {
     sRoot.speed = 2.0 + Math.random() * 2.0;
     sRoot.state = "IDLE"; // IDLE, RUN, SQUISHED
     sRoot.stateTimer = Math.random() * 2;
+
+    // Store references to limbs for animation
+    sRoot.animNodes = {
+        torso: torso,
+        shoulderL: shoulderL, shoulderR: shoulderR,
+        elbowL: elbowL, elbowR: elbowR,
+        hipL: hipL, hipR: hipR,
+        kneeL: kneeL, kneeR: kneeR
+    };
 
     return sRoot;
 }
@@ -2982,38 +3146,45 @@ function buildTank() {
     turretArmorR.color = darkArmor;
     turret.add(turretArmorR);
 
-    // Tank Barrel (Thicker and slightly shorter to avoid spindly look)
+    // Tank Barrel (Thicker and properly proportioned)
     let barrel = new Node("TankBarrel");
-    barrel.scale.set(0.35, 0.35, 2.8);
-    barrel.position.set(0, 0, 2.4);
-    barrel.color = [0.25, 0.25, 0.25, 1.0];
+    barrel.scale.set(0.3, 0.3, 3.5);
+    barrel.position.set(0, 0, 3.0);
+    barrel.color = [0.15, 0.15, 0.15, 1.0];
     turret.add(barrel);
 
     // Barrel Fume Extractor (Thickened)
     let extractor = new Node("FumeExtractor");
-    extractor.scale.set(0.45, 0.45, 0.6);
-    extractor.position.set(0, 0, 1.0);
+    extractor.scale.set(0.45, 0.45, 0.8);
+    extractor.position.set(0, 0, 0.2);
     extractor.color = darkArmor;
     barrel.add(extractor);
+
+    // Muzzle Brake
+    let muzzle = new Node("MuzzleBrake");
+    muzzle.scale.set(0.4, 0.4, 0.5);
+    muzzle.position.set(0, 0, 1.8);
+    muzzle.color = trackColor;
+    barrel.add(muzzle);
 
     // Muzzle Flash
     let flash = new Node("MuzzleFlash");
     flash.scale.set(2.0, 2.0, 2.0);
-    flash.position.set(0, 0, 1.5);
+    flash.position.set(0, 0, 2.2);
     flash.color = [1.0, 0.8, 0.2, 0.0];
     barrel.add(flash);
     tankRoot.muzzleFlashNode = flash;
 
     // Tank Tracks (Wider and bulkier)
     let tLeft = new Node("TankTrackL");
-    tLeft.scale.set(0.8, 1.4, 5.0);
-    tLeft.position.set(-2.0, 0.1, 0);
+    tLeft.scale.set(0.8, 1.2, 5.2);
+    tLeft.position.set(-2.0, 0.2, 0);
     tLeft.color = trackColor;
     tankRoot.add(tLeft);
 
     let tRight = new Node("TankTrackR");
-    tRight.scale.set(0.8, 1.4, 5.0);
-    tRight.position.set(2.0, 0.1, 0);
+    tRight.scale.set(0.8, 1.2, 5.2);
+    tRight.position.set(2.0, 0.2, 0);
     tRight.color = trackColor;
     tankRoot.add(tRight);
 
