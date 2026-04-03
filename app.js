@@ -1161,6 +1161,12 @@ function updateKinematics(dt) {
     let dirtDrag = 0;
     let bladePushCount = 0;
 
+    // CRITICAL: Even though we call d9Root.updateMatrix() once globally at the top of the loop,
+    // the blade itself is animated within this very function (a few lines down) via user input!
+    // Therefore, to get accurate collisions for the blade in THIS frame, we MUST compute its world
+    // matrix explicitly here after the root has settled.
+    // Otherwise, it gets stuck because the collision box never updates, locking the vehicle!
+    d9Blade.updateMatrix(d9BladeArms.worldMatrix);
     let bladeWorldPos = getMatrixTranslation(d9Blade.worldMatrix);
     let bladeSize = new Vector3(3.5, 1.5, 1.5);
 
@@ -1178,8 +1184,8 @@ function updateKinematics(dt) {
     let currentMaxSpeed = baseMoveSpeed * (1.0 - combinedResistance);
 
     let targetVelocity = 0;
-    if (keys['ArrowUp']) targetVelocity = currentMaxSpeed;
-    if (keys['ArrowDown']) targetVelocity = -currentMaxSpeed;
+    if (keys['ArrowUp'] || keys['w'] || keys['W']) targetVelocity = currentMaxSpeed;
+    if (keys['ArrowDown'] || keys['s'] || keys['S']) targetVelocity = -currentMaxSpeed;
 
     // Disable movement if engine is dead
     if (isEngineDead) targetVelocity = 0;
