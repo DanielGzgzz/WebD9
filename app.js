@@ -1790,30 +1790,30 @@ function updatePhysics(dt) {
                 s.animPhase += runSpeed * dt * 2.0;
                 let swing = Math.sin(s.animPhase);
 
-                if (s.animNodes) {
-                    s.animNodes.lArm.rotation.x = -swing;
-                    s.animNodes.lElbow.rotation.x = swing > 0 ? swing * 0.5 : 0;
-                    s.animNodes.rArm.rotation.x = swing;
-                    s.animNodes.rElbow.rotation.x = swing < 0 ? -swing * 0.5 : 0;
+                if (s.animNodes && s.animNodes.shoulderL) {
+                    s.animNodes.shoulderL.rotation.x = -swing;
+                    s.animNodes.elbowL.rotation.x = swing > 0 ? swing * 0.5 : 0;
+                    s.animNodes.shoulderR.rotation.x = swing;
+                    s.animNodes.elbowR.rotation.x = swing < 0 ? -swing * 0.5 : 0;
 
-                    s.animNodes.lLeg.rotation.x = swing * 0.8;
-                    s.animNodes.lKnee.rotation.x = swing < 0 ? -swing : 0;
-                    s.animNodes.rLeg.rotation.x = -swing * 0.8;
-                    s.animNodes.rKnee.rotation.x = swing > 0 ? swing : 0;
+                    s.animNodes.hipL.rotation.x = swing * 0.8;
+                    s.animNodes.kneeL.rotation.x = swing < 0 ? -swing : 0;
+                    s.animNodes.hipR.rotation.x = -swing * 0.8;
+                    s.animNodes.kneeR.rotation.x = swing > 0 ? swing : 0;
                 }
             } else if (s.state === "IDLE") {
                 // Reset to default stance
                 s.animPhase = 0;
-                if (s.animNodes) {
-                    s.animNodes.lArm.rotation.x = -Math.PI / 6;
-                    s.animNodes.lElbow.rotation.x = -Math.PI / 4;
-                    s.animNodes.rArm.rotation.x = -Math.PI / 6;
-                    s.animNodes.rElbow.rotation.x = -Math.PI / 4;
+                if (s.animNodes && s.animNodes.shoulderL) {
+                    s.animNodes.shoulderL.rotation.x = -Math.PI / 6;
+                    s.animNodes.elbowL.rotation.x = -Math.PI / 4;
+                    s.animNodes.shoulderR.rotation.x = -Math.PI / 6;
+                    s.animNodes.elbowR.rotation.x = -Math.PI / 4;
 
-                    s.animNodes.lLeg.rotation.x = 0;
-                    s.animNodes.lKnee.rotation.x = 0;
-                    s.animNodes.rLeg.rotation.x = 0;
-                    s.animNodes.rKnee.rotation.x = 0;
+                    s.animNodes.hipL.rotation.x = 0;
+                    s.animNodes.kneeL.rotation.x = 0;
+                    s.animNodes.hipR.rotation.x = 0;
+                    s.animNodes.kneeR.rotation.x = 0;
                 }
             }
 
