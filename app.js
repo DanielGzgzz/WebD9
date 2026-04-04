@@ -1742,8 +1742,13 @@ function updatePhysics(dt) {
             s.isDead = true;
             s.state = "SQUISHED";
 
-            s.children[0].color = [0.8, 0.1, 0.1, 1.0];
-            s.children[1].color = [0.8, 0.1, 0.1, 1.0];
+            // Turn everything red (blood)
+            if (s.children[0]) {
+                s.children[0].children.forEach(c => {
+                    if (c.color) c.color = [0.8, 0.1, 0.1, 1.0];
+                    if (c.children) c.children.forEach(cc => { if (cc.color) cc.color = [0.8, 0.1, 0.1, 1.0]; });
+                });
+            }
             s.scale.set(1.5, 0.05, 1.5);
             s.position.y = getTerrainHeight(s.position.x, s.position.z) + 0.05;
 
@@ -2782,42 +2787,42 @@ function buildSoldier(isEnemy, x, z) {
 
     // Arms
     let shoulderL = new Node("ShoulderL");
-    shoulderL.position.set(-0.6, 0.4, 0);
+    shoulderL.position.set(-0.55, 0.4, 0);
     torso.add(shoulderL);
 
     let armUpL = new Node("ArmUpL");
-    armUpL.scale.set(0.25, 0.6, 0.25);
+    armUpL.scale.set(0.18, 0.55, 0.18);
     armUpL.position.set(0, -0.3, 0);
     armUpL.color = shirtColor;
     shoulderL.add(armUpL);
 
     let elbowL = new Node("ElbowL");
-    elbowL.position.set(0, -0.3, 0);
+    elbowL.position.set(0, -0.27, 0);
     armUpL.add(elbowL);
 
     let armDownL = new Node("ArmDownL");
-    armDownL.scale.set(0.2, 0.6, 0.2);
-    armDownL.position.set(0, -0.3, 0);
+    armDownL.scale.set(0.15, 0.5, 0.15);
+    armDownL.position.set(0, -0.25, 0);
     armDownL.color = skinColor;
     elbowL.add(armDownL);
 
     let shoulderR = new Node("ShoulderR");
-    shoulderR.position.set(0.6, 0.4, 0);
+    shoulderR.position.set(0.55, 0.4, 0);
     torso.add(shoulderR);
 
     let armUpR = new Node("ArmUpR");
-    armUpR.scale.set(0.25, 0.6, 0.25);
+    armUpR.scale.set(0.18, 0.55, 0.18);
     armUpR.position.set(0, -0.3, 0);
     armUpR.color = shirtColor;
     shoulderR.add(armUpR);
 
     let elbowR = new Node("ElbowR");
-    elbowR.position.set(0, -0.3, 0);
+    elbowR.position.set(0, -0.27, 0);
     armUpR.add(elbowR);
 
     let armDownR = new Node("ArmDownR");
-    armDownR.scale.set(0.2, 0.6, 0.2);
-    armDownR.position.set(0, -0.3, 0);
+    armDownR.scale.set(0.15, 0.5, 0.15);
+    armDownR.position.set(0, -0.25, 0);
     armDownR.color = skinColor;
     elbowR.add(armDownR);
 
@@ -2827,24 +2832,24 @@ function buildSoldier(isEnemy, x, z) {
     torso.add(hipL);
 
     let legUpL = new Node("LegUpL");
-    legUpL.scale.set(0.3, 0.7, 0.3);
-    legUpL.position.set(0, -0.35, 0);
+    legUpL.scale.set(0.22, 0.65, 0.22);
+    legUpL.position.set(0, -0.32, 0);
     legUpL.color = pantColor;
     hipL.add(legUpL);
 
     let kneeL = new Node("KneeL");
-    kneeL.position.set(0, -0.35, 0);
+    kneeL.position.set(0, -0.32, 0);
     legUpL.add(kneeL);
 
     let legDownL = new Node("LegDownL");
-    legDownL.scale.set(0.25, 0.7, 0.25);
-    legDownL.position.set(0, -0.35, 0);
+    legDownL.scale.set(0.18, 0.65, 0.18);
+    legDownL.position.set(0, -0.32, 0);
     legDownL.color = pantColor;
     kneeL.add(legDownL);
 
     let shoeL = new Node("ShoeL");
-    shoeL.scale.set(0.28, 0.15, 0.4);
-    shoeL.position.set(0, -0.35, 0.05);
+    shoeL.scale.set(0.24, 0.12, 0.35);
+    shoeL.position.set(0, -0.32, 0.05);
     shoeL.color = [0.1, 0.1, 0.1, 1.0];
     legDownL.add(shoeL);
 
@@ -2853,24 +2858,24 @@ function buildSoldier(isEnemy, x, z) {
     torso.add(hipR);
 
     let legUpR = new Node("LegUpR");
-    legUpR.scale.set(0.3, 0.7, 0.3);
-    legUpR.position.set(0, -0.35, 0);
+    legUpR.scale.set(0.22, 0.65, 0.22);
+    legUpR.position.set(0, -0.32, 0);
     legUpR.color = pantColor;
     hipR.add(legUpR);
 
     let kneeR = new Node("KneeR");
-    kneeR.position.set(0, -0.35, 0);
+    kneeR.position.set(0, -0.32, 0);
     legUpR.add(kneeR);
 
     let legDownR = new Node("LegDownR");
-    legDownR.scale.set(0.25, 0.7, 0.25);
-    legDownR.position.set(0, -0.35, 0);
+    legDownR.scale.set(0.18, 0.65, 0.18);
+    legDownR.position.set(0, -0.32, 0);
     legDownR.color = pantColor;
     kneeR.add(legDownR);
 
     let shoeR = new Node("ShoeR");
-    shoeR.scale.set(0.28, 0.15, 0.4);
-    shoeR.position.set(0, -0.35, 0.05);
+    shoeR.scale.set(0.24, 0.12, 0.35);
+    shoeR.position.set(0, -0.32, 0.05);
     shoeR.color = [0.1, 0.1, 0.1, 1.0];
     legDownR.add(shoeR);
 
@@ -3097,120 +3102,72 @@ function buildFuelTruck() {
 function buildTank() {
     let tankRoot = new Node("Tank");
     tankRoot.position.set(0, 1.5, -15);
+    tankRoot.isTank = true; // explicitly mark as tank to prevent squish
 
     // Steel / Urban Camo Colors
     const armorColor = [0.45, 0.5, 0.45, 1.0];
     const darkArmor = [0.35, 0.4, 0.35, 1.0];
     const trackColor = [0.15, 0.15, 0.15, 1.0];
 
-    // Make the tank wider, shorter, and bulkier to avoid the "long flat" look
-    // Lower Hull
-    let hullLower = new Node("HullLower");
-    hullLower.scale.set(3.4, 0.9, 4.2);
-    hullLower.position.set(0, 0.0, 0);
-    hullLower.color = darkArmor;
-    tankRoot.add(hullLower);
+    // Make the tank resemble the APC geometry strongly (as requested),
+    // but with a turret instead of a flat top.
 
-    // Upper Hull
+    // Hull (Using the same proportions as APC)
     let bodyMain = new Node("TankBodyMain");
-    bodyMain.scale.set(3.6, 0.7, 4.0);
-    bodyMain.position.set(0, 0.7, -0.2);
+    bodyMain.scale.set(2.5, 1.5, 4.5);
+    bodyMain.position.set(0, 0, 0);
     bodyMain.color = armorColor;
     tankRoot.add(bodyMain);
 
-    // Thick sloped front glacis
-    let bodyFront = new Node("TankBodyFront");
-    bodyFront.scale.set(3.6, 0.7, 1.4);
-    bodyFront.position.set(0, 0.45, 2.2);
-    bodyFront.rotation.x = 0.4;
-    bodyFront.color = armorColor;
-    tankRoot.add(bodyFront);
-
-    // Tank Turret Base (Hexagonal/thick profile)
+    // Tank Turret Base
     let turretBase = new Node("TankTurretBase");
-    turretBase.scale.set(2.6, 0.6, 2.8);
-    turretBase.position.set(0, 1.1, -0.2);
-    turretBase.color = darkArmor;
+    turretBase.scale.set(1.8, 0.6, 2.0);
+    turretBase.position.set(0, 1.05, 0);
+    turretBase.color = [0.25, 0.35, 0.25, 1.0];
     tankRoot.add(turretBase);
 
     // Tank Turret Top
     let turret = new Node("TankTurret");
-    turret.scale.set(2.2, 0.5, 2.4);
-    turret.position.set(0, 0.5, 0.2);
+    turret.scale.set(1.4, 0.5, 1.8);
+    turret.position.set(0, 0.5, 0.1);
     turret.color = armorColor;
     turretBase.add(turret);
 
-    // Side reactive armor blocks on turret
-    let turretArmorL = new Node("TurretArmorL");
-    turretArmorL.scale.set(0.4, 0.6, 2.0);
-    turretArmorL.position.set(-1.2, 0, 0);
-    turretArmorL.rotation.z = 0.2;
-    turretArmorL.color = darkArmor;
-    turret.add(turretArmorL);
+    // Gun Mantlet
+    let mantlet = new Node("Mantlet");
+    mantlet.scale.set(0.8, 0.6, 0.8);
+    mantlet.position.set(0, 0.1, 1.0);
+    mantlet.color = [0.1, 0.1, 0.1, 1.0];
+    turret.add(mantlet);
 
-    let turretArmorR = new Node("TurretArmorR");
-    turretArmorR.scale.set(0.4, 0.6, 2.0);
-    turretArmorR.position.set(1.2, 0, 0);
-    turretArmorR.rotation.z = -0.2;
-    turretArmorR.color = darkArmor;
-    turret.add(turretArmorR);
-
-    // Tank Barrel (Thicker and properly proportioned)
+    // Main Gun Barrel
     let barrel = new Node("TankBarrel");
-    barrel.scale.set(0.3, 0.3, 3.5);
-    barrel.position.set(0, 0, 3.0);
+    barrel.scale.set(0.2, 0.2, 3.5);
+    barrel.position.set(0, 0, 2.0);
     barrel.color = [0.15, 0.15, 0.15, 1.0];
-    turret.add(barrel);
+    mantlet.add(barrel);
 
-    // Barrel Fume Extractor (Thickened)
-    let extractor = new Node("FumeExtractor");
-    extractor.scale.set(0.45, 0.45, 0.8);
-    extractor.position.set(0, 0, 0.2);
-    extractor.color = darkArmor;
-    barrel.add(extractor);
-
-    // Muzzle Brake
-    let muzzle = new Node("MuzzleBrake");
-    muzzle.scale.set(0.4, 0.4, 0.5);
-    muzzle.position.set(0, 0, 1.8);
-    muzzle.color = trackColor;
-    barrel.add(muzzle);
-
-    // Muzzle Flash
+    // Muzzle flash node
     let flash = new Node("MuzzleFlash");
-    flash.scale.set(2.0, 2.0, 2.0);
-    flash.position.set(0, 0, 2.2);
+    flash.scale.set(6.0, 6.0, 6.0);
+    flash.position.set(0, 0, 1.0);
     flash.color = [1.0, 0.8, 0.2, 0.0];
     barrel.add(flash);
     tankRoot.muzzleFlashNode = flash;
 
-    // Tank Tracks (Wider and bulkier)
-    let tLeft = new Node("TankTrackL");
-    tLeft.scale.set(0.8, 1.2, 5.2);
-    tLeft.position.set(-2.0, 0.2, 0);
-    tLeft.color = trackColor;
-    tankRoot.add(tLeft);
-
-    let tRight = new Node("TankTrackR");
-    tRight.scale.set(0.8, 1.2, 5.2);
-    tRight.position.set(2.0, 0.2, 0);
-    tRight.color = trackColor;
-    tankRoot.add(tRight);
-
-    // Visual road wheels inside tracks
-    for(let i=0; i<5; i++) {
-        let zPos = 1.8 - (i * 0.9);
-
-        let wheelL = new Node("RoadWheelL");
-        wheelL.scale.set(0.85, 0.9, 0.9);
-        wheelL.position.set(-2.0, -0.2, zPos);
-        wheelL.color = [0.25, 0.25, 0.25, 1.0];
+    // Road wheels (4 per side like the APC)
+    for (let i = 0; i < 4; i++) {
+        let zOff = -1.5 + (i * 1.0);
+        let wheelL = new Node("TWheelL");
+        wheelL.scale.set(0.4, 0.8, 0.8);
+        wheelL.position.set(-1.4, -0.6, zOff);
+        wheelL.color = trackColor;
         tankRoot.add(wheelL);
 
-        let wheelR = new Node("RoadWheelR");
-        wheelR.scale.set(0.85, 0.9, 0.9);
-        wheelR.position.set(2.0, -0.2, zPos);
-        wheelR.color = [0.25, 0.25, 0.25, 1.0];
+        let wheelR = new Node("TWheelR");
+        wheelR.scale.set(0.4, 0.8, 0.8);
+        wheelR.position.set(1.4, -0.6, zOff);
+        wheelR.color = trackColor;
         tankRoot.add(wheelR);
     }
 
