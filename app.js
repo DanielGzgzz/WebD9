@@ -1234,12 +1234,16 @@ function updateKinematics(dt) {
         let compassRose = document.getElementById("compassRose");
         if (compassRose) {
             // Set N E S W positions once:
+            // Since +Y rotation turns left, mapping needs to slide right (positive translateX offset).
+            // N should be at 0, E should be right of N, W should be left of N.
             if (!window.compassInitialized) {
                 compassRose.innerHTML = '';
+                // Standard mapping: Left turn (+Y) = turning West. Right turn (-Y) = turning East.
+                // If the user says left is right, we just revert to standard and invert the pxOffset slide!
                 const directions = [
-                    { label: 'N', deg: 0 }, { label: 'W', deg: 90 }, { label: 'S', deg: 180 }, { label: 'E', deg: 270 },
-                    { label: 'N', deg: 360 }, { label: 'W', deg: 450 }, { label: 'S', deg: 540 }, { label: 'E', deg: 630 },
-                    { label: 'N', deg: -360 }, { label: 'W', deg: -270 }, { label: 'S', deg: -180 }, { label: 'E', deg: -90 }
+                    { label: 'N', deg: 0 }, { label: 'E', deg: 90 }, { label: 'S', deg: 180 }, { label: 'W', deg: 270 },
+                    { label: 'N', deg: 360 }, { label: 'E', deg: 450 }, { label: 'S', deg: 540 }, { label: 'W', deg: 630 },
+                    { label: 'N', deg: -360 }, { label: 'E', deg: -270 }, { label: 'S', deg: -180 }, { label: 'W', deg: -90 }
                 ];
                 directions.forEach(d => {
                     let span = document.createElement('span');
@@ -1252,13 +1256,10 @@ function updateKinematics(dt) {
                 window.compassInitialized = true;
             }
 
-            // Because our world starts looking down positive Z,
-            // Turning left (positive Y rotation) means turning East visually (though math-wise it depends on camera mapping)
-            // If turning left (A key) feels like right on the compass, we invert the pxOffset.
-            // Actually, in WebGL +Z is backwards and -Z is forwards. But we map heading via Math.sin/Math.cos
-            // We use standard pxOffset, but swap E and W in the initialization array above.
+            // Add pxOffset instead of subtract to slide the UI strip to the RIGHT when we turn LEFT (+Y).
+            // Turning left makes the strip slide right, so W (which is drawn at 270 / -90 on the strip) scrolls into the center (150px)
             let pxOffset = (normalizedDeg / 360) * 1200;
-            compassRose.style.transform = `translateX(${150 - pxOffset}px)`;
+            compassRose.style.transform = `translateX(${150 + pxOffset}px)`;
         }
     }
 
@@ -3140,18 +3141,34 @@ function buildTank() {
     mantlet.color = [0.1, 0.1, 0.1, 1.0];
     turret.add(mantlet);
 
-    // Main Gun Barrel
+    // Main Gun Barrel (Simulate cylinder using crossed boxes to avoid "flat" look)
     let barrel = new Node("TankBarrel");
     barrel.scale.set(0.2, 0.2, 3.5);
     barrel.position.set(0, 0, 2.0);
     barrel.color = [0.15, 0.15, 0.15, 1.0];
     mantlet.add(barrel);
 
-    // Muzzle flash node
+    // Add two sub-nodes rotated to make an octagon profile barrel
+    let barrel2 = new Node("BarrelRot1");
+    barrel2.scale.set(1.0, 1.0, 1.0); // Relative to parent barrel
+    barrel2.position.set(0, 0, 0);
+    barrel2.rotation.z = Math.PI / 4; // 45 deg
+    barrel2.color = [0.15, 0.15, 0.15, 1.0];
+    barrel.add(barrel2);
+
+    let barrel3 = new Node("BarrelRot2");
+    barrel3.scale.set(1.0, 1.0, 1.0);
+    barrel3.position.set(0, 0, 0);
+    barrel3.rotation.z = Math.PI / 2; // 90 deg (cross)
+    barrel3.color = [0.15, 0.15, 0.15, 1.0];
+    barrel.add(barrel3);
+
+    // Muzzle flash node (Start invisible)
     let flash = new Node("MuzzleFlash");
     flash.scale.set(6.0, 6.0, 6.0);
     flash.position.set(0, 0, 1.0);
-    flash.color = [1.0, 0.8, 0.2, 0.0];
+    flash.color = [1.0, 0.8, 0.2, 1.0]; // Set solid but hide the node completely
+    flash.isDrawable = false; // Hide until fired!
     barrel.add(flash);
     tankRoot.muzzleFlashNode = flash;
 
@@ -3356,9 +3373,9 @@ function updateGameLogic(dt) {
             if (t.fireCooldown <= 0) {
                 t.fireCooldown = 2.0; // fire every 2 seconds
                 if (t.muzzleFlashNode) {
-                    t.muzzleFlashNode.color[3] = 1.0;
+                    t.muzzleFlashNode.isDrawable = true;
                     let myFlash = t.muzzleFlashNode;
-                    setTimeout(() => { myFlash.color[3] = 0.0; }, 100);
+                    setTimeout(() => { myFlash.isDrawable = false; }, 100);
                 }
 
                 targetEnemy.isDead = true;
