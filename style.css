@@ -258,15 +258,17 @@ canvas {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background: rgba(30, 30, 30, 0.95);
+    background: rgba(20, 25, 20, 0.95);
     color: white;
     padding: 40px;
     border-radius: 12px;
     text-align: center;
     border: 3px solid #ffcc00;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    box-shadow: 0 10px 50px rgba(0,0,0,0.9);
     z-index: 1000;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: 'Courier New', Courier, monospace; /* Military theme */
+    max-width: 600px;
+    width: 90%;
 }
 
 #mainMenu h1 {
@@ -274,13 +276,36 @@ canvas {
     margin-top: 0;
     font-size: 32px;
     text-transform: uppercase;
+    letter-spacing: 3px;
+    border-bottom: 2px solid #555;
+    padding-bottom: 15px;
+}
+
+.story-briefing {
+    background: rgba(0, 0, 0, 0.5);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    border-left: 5px solid #4CAF50;
+    text-align: left;
+}
+
+.story-briefing h2 {
+    color: #4CAF50;
+    margin-top: 0;
+    font-size: 20px;
     letter-spacing: 2px;
 }
 
-#mainMenu p {
-    font-size: 16px;
-    margin-bottom: 30px;
-    color: #ccc;
+.story-briefing p {
+    font-size: 15px;
+    line-height: 1.5;
+    margin-bottom: 15px;
+    color: #ddd;
+}
+
+.story-briefing p:last-child {
+    margin-bottom: 0;
 }
 
 #startBtn {
